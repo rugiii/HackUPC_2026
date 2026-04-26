@@ -1,0 +1,4085 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Mecalux — Warehouse 3D Viewer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  :root {
+    /* Mecalux Corporate Palette */
+    --mecalux-orange: #f25c05; 
+    --mecalux-orange-hover: #e05303;
+    --mecalux-blue: #124d90; /* Azul extraído directamente de tu logo */
+    
+    --bg-dark: #0f1218; 
+    --surface: #171b24;
+    --surface-hover: #1e242f;
+    --border: #2a3140;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent-blue: var(--mecalux-blue); /* Aplicamos el azul corporativo a los acentos */
+    
+    --font-head: 'Barlow Condensed', sans-serif;
+    --font-body: 'Barlow', sans-serif;
+  }
+
+  /* Ajustes para el nuevo logo en imagen */
+  .brand-logo img { height: 36px; width: auto; display: block; }
+  .loader-brand img { height: 90px; width: auto; margin-bottom: 15px; display: block; }
+
+
+  html, body { 
+    width: 100%; height: 100%; 
+    background: var(--bg-dark); color: var(--text-main); 
+    font-family: var(--font-body); overflow: hidden; touch-action: none; 
+  }
+  
+  #canvas-container { position: fixed; inset: 0; z-index: 0; }
+  canvas { display: block; width: 100% !important; height: 100% !important; outline: none; }
+
+  /* ── TOP BAR ── */
+  #topbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 20px; height: 60px;
+    background: rgba(15, 18, 24, 0.85); border-bottom: 2px solid var(--mecalux-orange);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-logo {
+    font-family: var(--font-head); font-size: 26px; font-weight: 700;
+    letter-spacing: 0.02em; text-transform: uppercase; display: flex;
+  }
+  .brand-logo .meca { color: #fff; }
+  .brand-logo .lux  { color: var(--mecalux-orange); }
+  .brand-sep { width: 1px; height: 24px; background: var(--border); margin: 0 8px; }
+  .brand-sub { font-family: var(--font-head); font-size: 14px; font-weight: 500; letter-spacing: 0.1em; color: var(--text-muted); text-transform: uppercase; }
+
+  .topbar-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .btn {
+    font-family: var(--font-head); font-size: 13px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; padding: 8px 14px; border-radius: 4px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
+    cursor: pointer; transition: all 0.2s ease; outline: none; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--mecalux-orange); color: var(--text-main); background: var(--surface-hover); }
+  .btn.active { border-color: var(--mecalux-orange); color: var(--mecalux-orange); background: rgba(242, 92, 5, 0.1); }
+  .btn-primary { border-color: var(--mecalux-orange); color: #fff; background: var(--mecalux-orange); }
+  .btn-primary:hover { background: var(--mecalux-orange-hover); border-color: var(--mecalux-orange-hover); color: #fff; }
+  input[type=file] { display: none; }
+  .divider { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+
+  /* ── FULL SCREEN FILE PANEL ── */
+  #file-panel {
+    position: fixed; inset: 0; z-index: 50;
+    background: var(--bg-dark);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    transition: opacity 0.4s ease, visibility 0.4s;
+    overflow-y: auto; padding: 40px 20px;
+  }
+  #file-panel.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+  
+  .fp-container {
+    width: 100%; max-width: 900px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 4px solid var(--mecalux-orange);
+    border-radius: 8px; padding: 40px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+  }
+  
+  .fp-header { text-align: center; margin-bottom: 30px; }
+  .fp-header h2 { font-family: var(--font-head); font-size: 32px; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; }
+  .fp-header p { color: var(--text-muted); font-size: 15px; }
+
+  .fp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-bottom: 30px; }
+  
+  .fp-slot {
+    border: 2px dashed var(--border); border-radius: 6px; padding: 20px;
+    cursor: pointer; transition: all 0.2s; position: relative;
+    display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
+    background: rgba(255,255,255,0.02); min-height: 110px;
+  }
+  .fp-slot:hover { border-color: var(--mecalux-orange); background: rgba(242, 92, 5, 0.05); transform: translateY(-2px); }
+  .fp-slot.loaded { border-color: var(--mecalux-orange); border-style: solid; background: rgba(242, 92, 5, 0.08); }
+  
+  .fp-slot-name { font-family: var(--font-head); font-size: 16px; font-weight: 700; color: var(--text-main); margin-bottom: 4px; padding-right: 60px; letter-spacing: 0.05em; }
+  .fp-slot-desc { font-size: 13px; color: var(--text-muted); line-height: 1.4; margin-bottom: 10px; }
+  .fp-slot-status { font-size: 12px; font-weight: 500; font-family: var(--font-head); color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+  .fp-slot.loaded .fp-slot-status { color: var(--mecalux-orange); }
+  
+  .fp-badge {
+    position: absolute; top: 16px; right: 16px; font-size: 11px; font-family: var(--font-head);
+    padding: 3px 8px; border-radius: 4px; font-weight: 700; letter-spacing: 0.08em;
+  }
+  .fp-badge.req { background: rgba(242, 92, 5, 0.15); color: var(--mecalux-orange); border: 1px solid rgba(242, 92, 5, 0.3); }
+  .fp-badge.opt { background: rgba(148, 163, 184, 0.15); color: var(--text-muted); border: 1px solid rgba(148, 163, 184, 0.3); }
+  .fp-badge.demo { background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.3); }
+
+  .fp-footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 24px; }
+  .fp-hint { font-size: 13px; color: var(--text-muted); }
+  .fp-hint strong { color: var(--text-main); }
+  .fp-actions { display: flex; gap: 12px; }
+  .btn-large { padding: 12px 30px; font-size: 16px; border-radius: 6px; }
+
+  /* ── SIDE PANELS ── */
+  .side-panel {
+    position: fixed; top: 80px; z-index: 10; width: 220px;
+    background: rgba(23, 27, 36, 0.95); border: 1px solid var(--border);
+    border-radius: 6px; overflow: hidden; backdrop-filter: blur(16px);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+  }
+  .side-panel.hidden { opacity: 0; pointer-events: none; }
+  #stats-panel { left: 20px; }
+  #stats-panel.hidden { transform: translateX(-120%); }
+  #legend-panel { right: 20px; width: 200px; }
+  #legend-panel.hidden { transform: translateX(120%); }
+
+  .panel-header {
+    padding: 10px 16px; background: rgba(0,0,0,0.2); border-bottom: 1px solid var(--border);
+    font-family: var(--font-head); font-size: 13px; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text-main); display: flex; align-items: center; gap: 8px;
+  }
+  .panel-header::before { content: ''; width: 10px; height: 10px; background: var(--mecalux-orange); border-radius: 2px; display: block; }
+
+  .stat-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { font-size: 13px; color: var(--text-muted); }
+  .stat-value { font-family: var(--font-head); font-size: 15px; font-weight: 700; color: var(--text-main); }
+  .stat-value.orange { color: var(--mecalux-orange); }
+  .stat-value.blue { color: var(--accent-blue); }
+  
+  .score-box { margin: 16px; padding: 12px; background: rgba(242, 92, 5, 0.05); border: 1px solid rgba(242, 92, 5, 0.2); border-radius: 6px; text-align: center; }
+  .score-label { font-size: 11px; font-family: var(--font-head); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; }
+  .score-num { font-family: var(--font-head); font-size: 28px; font-weight: 700; color: var(--mecalux-orange); }
+
+  .legend-item { display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
+  .legend-item:last-child { border-bottom: none; }
+  .legend-swatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+  .legend-label { font-size: 13px; color: var(--text-main); flex: 1; display: flex; flex-direction: column; }
+  .legend-label small { color: var(--text-muted); font-size: 11px; }
+  .legend-count { font-family: var(--font-head); font-size: 14px; font-weight: 600; color: var(--text-muted); }
+
+  /* ── TOOLTIP ── */
+  #tooltip {
+    position: fixed; z-index: 30; pointer-events: none;
+    background: rgba(15, 18, 24, 0.98); border: 1px solid var(--mecalux-orange);
+    border-radius: 6px; padding: 12px 16px; min-width: 180px;
+    opacity: 0; transition: opacity 0.1s;
+    box-shadow: 0 8px 32px rgba(242, 92, 5, 0.15);
+  }
+  #tooltip.visible { opacity: 1; }
+  .tt-title { font-family: var(--font-head); font-weight: 700; font-size: 15px; color: var(--mecalux-orange); margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  .tt-row { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 4px; color: var(--text-muted); font-size: 12px; }
+  .tt-row span:last-child { color: var(--text-main); font-weight: 500; }
+
+  /* ── LOADER & OVERLAYS ── */
+  #loader {
+    position: fixed; inset: 0; z-index: 1000; background: var(--bg-dark);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+    transition: opacity 0.6s;
+  }
+  #loader.fade-out { opacity: 0; pointer-events: none; }
+  .loader-brand { font-family: var(--font-head); font-size: 42px; font-weight: 700; }
+  .loader-brand .meca { color: #fff; } .loader-brand .lux { color: var(--mecalux-orange); }
+  .loader-sub { font-family: var(--font-head); font-size: 14px; letter-spacing: 0.3em; color: var(--text-muted); text-transform: uppercase; }
+  .loader-bar { width: 200px; height: 3px; background: var(--surface); border-radius: 3px; overflow: hidden; }
+  .loader-fill { height: 100%; background: var(--mecalux-orange); animation: loading 1.5s ease-in-out infinite; }
+  @keyframes loading { 0%{width:0%;margin-left:0} 50%{width:60%;margin-left:20%} 100%{width:0%;margin-left:100%} }
+
+  #drop-overlay {
+    position: fixed; inset: 0; z-index: 200; background: rgba(15, 18, 24, 0.9);
+    border: 4px dashed var(--mecalux-orange); display: none; align-items: center;
+    justify-content: center; flex-direction: column; gap: 16px;
+    font-family: var(--font-head); font-size: 24px; font-weight: 700; letter-spacing: 0.05em; color: var(--mecalux-orange); text-transform: uppercase;
+  }
+  #drop-overlay.active { display: flex; }
+  
+  #hint { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 10; font-family: var(--font-head); font-size: 12px; font-weight: 600; letter-spacing: 0.15em; color: rgba(255,255,255,0.4); pointer-events: none; text-align: center; background: rgba(0,0,0,0.5); padding: 8px 16px; border-radius: 20px; }
+  
+  /* Close Button for File Panel */
+  .btn-close-panel { position: absolute; top: 20px; right: 20px; background: none; border: none; color: var(--text-muted); font-size: 30px; cursor: pointer; transition: color 0.2s; }
+  .btn-close-panel:hover { color: #fff; }
+
+  .btn-back-landing {
+    position: absolute; top: 20px; left: 20px;
+    background: none; border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-family: var(--font-head); font-size: 12px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 8px 14px; border-radius: 4px;
+    cursor: pointer; transition: all 0.2s;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-back-landing:hover { color: var(--text-main); border-color: var(--mecalux-orange); }
+
+  /* ── PALLET INSPECTOR PANEL ── */
+  #pallet-panel {
+    position: fixed; top: 80px; right: 20px; z-index: 15; width: 300px;
+    background: rgba(23, 27, 36, 0.97); border: 1px solid var(--border);
+    border-top: 3px solid var(--mecalux-orange);
+    border-radius: 6px; overflow: hidden; backdrop-filter: blur(16px);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+    transform: translateX(120%); transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  #pallet-panel.visible { transform: translateX(0); }
+  #pallet-panel .panel-header { display: flex; align-items: center; justify-content: space-between; }
+  #pallet-panel .panel-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 20px; line-height: 1; padding: 0 4px; }
+  #pallet-panel .panel-close:hover { color: #fff; }
+  .pp-id-block { padding: 14px 16px; background: linear-gradient(180deg, rgba(242,92,5,0.12), rgba(242,92,5,0)); border-bottom: 1px solid var(--border); }
+  .pp-id { font-family: var(--font-head); font-size: 22px; font-weight: 700; color: var(--mecalux-orange); letter-spacing: 0.05em; }
+  .pp-sku { font-family: var(--font-body); font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+  .pp-status-badge {
+    display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 4px;
+    font-family: var(--font-head); font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .pp-status-ok       { background: rgba(34,197,94,0.15);  color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+  .pp-status-warn     { background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
+  .pp-status-blocked  { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+  .pp-status-empty    { background: rgba(148,163,184,0.15); color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); }
+  .pp-actions { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+  .pp-actions .btn { flex: 1; }
+  .pp-empty-msg { padding: 30px 20px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+  #pick-counter {
+    margin-top: 8px; padding: 8px 12px; background: rgba(18,77,144,0.1);
+    border: 1px solid rgba(18,77,144,0.3); border-radius: 4px;
+    font-family: var(--font-head); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-muted); display: flex; justify-content: space-between; align-items: center;
+  }
+  #pick-counter .pc-num { font-size: 16px; font-weight: 700; color: var(--accent-blue); }
+
+  /* ── LANDING (first screen) ── */
+  #landing {
+    position: fixed; inset: 0; z-index: 60;
+    background: var(--bg-dark);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 40px 24px;
+    transition: opacity 0.45s ease, visibility 0.45s;
+    overflow: hidden;
+  }
+  #landing.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+  /* subtle grid backdrop, very low opacity, evokes warehouse blueprint */
+  #landing::before {
+    content: ''; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 60px 60px;
+    opacity: 0.18;
+    mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+    pointer-events: none;
+  }
+  /* faint orange glow behind the headline */
+  #landing::after {
+    content: ''; position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -55%);
+    width: 700px; height: 700px;
+    background: radial-gradient(circle, rgba(242,92,5,0.08) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  .landing-inner {
+    position: relative; z-index: 1;
+    width: 100%; max-width: 1100px;
+    display: flex; flex-direction: column; align-items: center;
+    text-align: center;
+  }
+
+  .landing-logo { margin-bottom: 28px; }
+  .landing-logo img { height: 68px; width: auto; display: block; }
+
+  .landing-eyebrow {
+    font-family: var(--font-head);
+    font-size: 13px; font-weight: 600;
+    letter-spacing: 0.32em; text-transform: uppercase;
+    color: var(--mecalux-orange);
+    margin-bottom: 18px;
+    display: inline-flex; align-items: center; gap: 10px;
+  }
+  .landing-eyebrow::before, .landing-eyebrow::after {
+    content: ''; width: 28px; height: 1px; background: var(--mecalux-orange); opacity: 0.6;
+  }
+
+  .landing-headline {
+    font-family: var(--font-head);
+    font-size: clamp(38px, 6vw, 68px);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1.02;
+    text-transform: uppercase;
+    color: var(--text-main);
+    margin-bottom: 18px;
+  }
+  .landing-headline .accent { color: var(--mecalux-orange); }
+
+  .landing-tagline {
+    font-family: var(--font-body);
+    font-size: clamp(15px, 1.6vw, 18px);
+    color: var(--text-muted);
+    max-width: 620px;
+    line-height: 1.5;
+    margin-bottom: 44px;
+  }
+
+  /* KPI strip */
+  .landing-kpis {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    width: 100%; max-width: 780px;
+    margin-bottom: 48px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgba(23, 27, 36, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    overflow: hidden;
+  }
+  .landing-kpi {
+    padding: 22px 16px;
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+  }
+  .landing-kpi:last-child { border-right: none; }
+  .landing-kpi-label {
+    font-family: var(--font-head);
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .landing-kpi-value {
+    font-family: var(--font-head);
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-main);
+  }
+  .landing-kpi:nth-child(1) .landing-kpi-value { color: var(--mecalux-orange); }
+  .landing-kpi:nth-child(3) .landing-kpi-value { color: var(--accent-blue); }
+  .landing-kpi-unit {
+    font-family: var(--font-body);
+    font-size: 12px; color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+
+  /* CTAs */
+  .landing-actions {
+    display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
+    margin-bottom: 28px;
+  }
+  .landing-btn {
+    font-family: var(--font-head);
+    font-size: 14px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 16px 32px;
+    border-radius: 4px;
+    cursor: pointer; transition: all 0.2s ease;
+    outline: none; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text-main);
+    display: inline-flex; align-items: center; gap: 10px;
+    min-width: 220px; justify-content: center;
+  }
+  .landing-btn:hover {
+    border-color: var(--mecalux-orange);
+    background: var(--surface-hover);
+  }
+  .landing-btn.primary {
+    background: var(--mecalux-orange);
+    border-color: var(--mecalux-orange);
+    color: #fff;
+    box-shadow: 0 4px 24px rgba(242,92,5,0.35);
+  }
+  .landing-btn.primary:hover {
+    background: var(--mecalux-orange-hover);
+    border-color: var(--mecalux-orange-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 28px rgba(242,92,5,0.45);
+  }
+
+  .landing-meta {
+    font-family: var(--font-body);
+    font-size: 12px; color: var(--text-muted);
+    letter-spacing: 0.06em;
+    display: flex; gap: 18px; flex-wrap: wrap; justify-content: center;
+  }
+  .landing-meta .dot { color: var(--mecalux-orange); }
+
+  @media (max-width: 640px) {
+    .landing-kpis { grid-template-columns: 1fr; }
+    .landing-kpi { border-right: none; border-bottom: 1px solid var(--border); }
+    .landing-kpi:last-child { border-bottom: none; }
+    .landing-btn { min-width: 100%; }
+  }
+
+  /* ── CODE EDITOR PANEL ── */
+  #code-panel {
+    position: fixed; inset: 0; z-index: 55;
+    background: var(--bg-dark);
+    display: flex; flex-direction: column;
+    transition: opacity 0.4s, visibility 0.4s;
+  }
+  #code-panel.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+  .cp-topbar {
+    display: flex; align-items: center; gap: 0;
+    background: rgba(15,18,24,0.97);
+    border-bottom: 2px solid var(--mecalux-orange);
+    padding: 0 20px; height: 56px; flex-shrink: 0;
+    backdrop-filter: blur(12px);
+  }
+  .cp-brand {
+    font-family: var(--font-head); font-size: 20px; font-weight: 700;
+    letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--text-muted); margin-right: 20px;
+  }
+  .cp-brand span { color: var(--mecalux-orange); }
+
+  .cp-tabs { display: flex; gap: 0; flex: 1; }
+  .cp-tab {
+    font-family: var(--font-head); font-size: 13px; font-weight: 600;
+    letter-spacing: 0.07em; text-transform: uppercase;
+    padding: 0 20px; height: 56px; line-height: 56px;
+    border: none; background: transparent;
+    color: var(--text-muted); cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s; white-space: nowrap;
+    position: relative; top: 2px;
+  }
+  .cp-tab:hover { color: var(--text-main); }
+  .cp-tab.active { color: var(--mecalux-orange); border-bottom-color: var(--mecalux-orange); background: rgba(242,92,5,0.06); }
+
+  .cp-tab-badge {
+    display: inline-block; margin-left: 6px;
+    font-size: 10px; padding: 1px 5px; border-radius: 3px;
+    background: rgba(242,92,5,0.15); color: var(--mecalux-orange);
+    font-weight: 700; letter-spacing: 0.06em; vertical-align: middle;
+  }
+
+  .cp-actions { display: flex; gap: 8px; margin-left: 16px; }
+  .cp-close-btn {
+    font-family: var(--font-head); font-size: 13px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 8px 14px; border-radius: 4px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
+    cursor: pointer; transition: all 0.2s;
+  }
+  .cp-close-btn:hover { border-color: var(--mecalux-orange); color: var(--text-main); }
+
+  .cp-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  .cp-pane { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+  .cp-pane.active { display: flex; }
+
+  .cp-editor-area {
+    flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 20px;
+    gap: 12px;
+  }
+  .cp-toolbar {
+    display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+  }
+  .cp-toolbar-label {
+    font-family: var(--font-head); font-size: 12px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text-muted); margin-right: 4px;
+  }
+  .cp-editor {
+    flex: 1;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+    font-size: 13px; line-height: 1.6;
+    background: #0a0d13; color: #e2e8f0;
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 16px; resize: none; outline: none;
+    tab-size: 4;
+    transition: border-color 0.2s;
+    overflow: auto;
+    white-space: pre;
+    word-wrap: normal;
+  }
+  .cp-editor:focus { border-color: var(--mecalux-orange); }
+
+  .cp-statusbar {
+    flex-shrink: 0;
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 20px; background: rgba(10,13,19,0.8);
+    border-top: 1px solid var(--border);
+    font-family: var(--font-head); font-size: 11px; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--text-muted);
+  }
+  .cp-status-item { display: flex; gap: 6px; align-items: center; }
+  .cp-status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--mecalux-orange); }
+  .cp-status-dot.blue { background: var(--accent-blue); }
+  .cp-status-dot.green { background: #22c55e; }
+
+  /* How-to box */
+  .cp-howto {
+    margin: 0 20px 0 20px; padding: 14px 18px;
+    background: rgba(18,77,144,0.1); border: 1px solid rgba(18,77,144,0.25);
+    border-radius: 6px; flex-shrink: 0;
+    font-size: 13px; color: var(--text-muted); line-height: 1.6;
+  }
+  .cp-howto strong { color: var(--text-main); }
+  .cp-howto code {
+    font-family: 'Courier New', monospace; font-size: 12px;
+    background: rgba(255,255,255,0.07); padding: 1px 5px; border-radius: 3px;
+    color: var(--mecalux-orange);
+  }
+
+
+  /* ── PYODIDE RUNNER ── */
+  #runner-overlay {
+    position: fixed; inset: 0; z-index: 80;
+    background: rgba(10,13,19,0.97);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    transition: opacity 0.3s, visibility 0.3s;
+    padding: 40px 20px;
+  }
+  #runner-overlay.hidden { opacity:0; visibility:hidden; pointer-events:none; }
+
+  .runner-box {
+    width: 100%; max-width: 780px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 4px solid #4ade80;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  }
+
+  .runner-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px;
+    background: rgba(0,0,0,0.2);
+    border-bottom: 1px solid var(--border);
+  }
+  .runner-title {
+    font-family: var(--font-head); font-size: 18px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .runner-title .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #4ade80;
+    box-shadow: 0 0 8px #4ade80;
+    animation: pulse-green 1.4s ease-in-out infinite;
+  }
+  .runner-title .dot.idle { background: var(--text-muted); box-shadow: none; animation: none; }
+  .runner-title .dot.error { background: #f87171; box-shadow: 0 0 8px #f87171; animation: none; }
+  @keyframes pulse-green { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .runner-phase {
+    font-family: var(--font-head); font-size: 12px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--text-muted);
+  }
+
+  .runner-log {
+    font-family: 'Courier New', 'JetBrains Mono', monospace;
+    font-size: 12.5px; line-height: 1.7;
+    background: #07090e;
+    color: #94a3b8;
+    padding: 16px 20px;
+    height: 340px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .runner-log .log-info  { color: #94a3b8; }
+  .runner-log .log-ok    { color: #4ade80; }
+  .runner-log .log-warn  { color: #fbbf24; }
+  .runner-log .log-err   { color: #f87171; }
+  .runner-log .log-head  { color: var(--mecalux-orange); font-weight: bold; }
+  .runner-log .log-val   { color: #60a5fa; }
+
+  .runner-progress {
+    height: 3px; background: var(--border); overflow: hidden;
+  }
+  .runner-progress-bar {
+    height: 100%; background: #4ade80;
+    width: 0%; transition: width 0.4s ease;
+    box-shadow: 0 0 8px #4ade80;
+  }
+
+  .runner-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px; border-top: 1px solid var(--border);
+  }
+  .runner-status-txt {
+    font-family: var(--font-head); font-size: 13px; letter-spacing: 0.06em;
+    color: var(--text-muted);
+  }
+  .runner-status-txt.done { color: #4ade80; }
+  .runner-status-txt.error { color: #f87171; }
+  .runner-actions { display: flex; gap: 8px; }
+
+</style>
+</head>
+<body>
+
+<div id="landing">
+  <div class="landing-inner">
+    <div class="landing-logo">
+      <img src="logoMEGALUX-removebg-preview.png" alt="Mecalux">
+    </div>
+
+    <div class="landing-eyebrow">HackUPC 2026 · Mecalux Challenge</div>
+
+    <h1 class="landing-headline">
+      Warehouse Layout,<br>
+      <span class="accent">Solved in Seconds.</span>
+    </h1>
+
+    <p class="landing-tagline">
+      A geometry-aware optimizer that packs racking systems into real warehouse
+      footprints, balancing cost, capacity and floor space — then renders the
+      result in interactive 3D.
+    </p>
+
+    <div class="landing-kpis">
+      <div class="landing-kpi">
+        <div class="landing-kpi-label">Objective F</div>
+        <div class="landing-kpi-value">0.847</div>
+        <div class="landing-kpi-unit">lower is better</div>
+      </div>
+      <div class="landing-kpi">
+        <div class="landing-kpi-label">Bays Placed</div>
+        <div class="landing-kpi-value">142</div>
+        <div class="landing-kpi-unit">racking units</div>
+      </div>
+      <div class="landing-kpi">
+        <div class="landing-kpi-label">Area Used</div>
+        <div class="landing-kpi-value">78<span style="font-size:0.55em">%</span></div>
+        <div class="landing-kpi-unit">of warehouse footprint</div>
+      </div>
+    </div>
+
+    <div class="landing-actions">
+      <button class="landing-btn primary" onclick="enterUserFlow()">
+        📂 Load Project Files
+      </button>
+      <button class="landing-btn" onclick="enterUserFlow()" style="border-color:rgba(34,197,94,0.4);color:#4ade80;">
+        ▶ Run Optimizer
+      </button>
+    </div>
+
+    <div class="landing-meta">
+      <span><span class="dot">●</span> Runs in browser via Pyodide WASM</span>
+      <span><span class="dot">●</span> Three.js 3D viewer</span>
+      <span><span class="dot">●</span> Greedy multi-start · local search</span>
+    </div>
+  </div>
+</div>
+
+<div id="loader">
+  <div class="loader-brand"><img src="logoMEGALUX-removebg-preview.png" alt="Mecalux"></div>
+  <div class="loader-sub">Warehouse Optimizer</div>
+  <div class="loader-bar"><div class="loader-fill"></div></div>
+</div>
+
+<div id="drop-overlay">
+  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+  Drop CSV files anywhere
+</div>
+
+<div id="canvas-container"><canvas id="three-canvas"></canvas></div>
+
+<div id="topbar">
+  <div class="brand">
+    <div class="brand-logo"><img src="logoMEGALUX-removebg-preview.png" alt="Mecalux"></div>
+    <div class="brand-sep"></div>
+    <div class="brand-sub">3D Viewer</div>
+  </div>
+  <div class="topbar-controls">
+    <button class="btn btn-primary" id="btn-files" onclick="toggleFilePanel()">📂 Data Setup</button>
+    <button class="btn" id="btn-code" onclick="toggleCodePanel()" style="border-color:var(--accent-blue);color:var(--accent-blue);">⟨/⟩ Código</button>
+    <div class="divider"></div>
+    <button class="btn" id="btn-ids" onclick="toggleIDs()">Labels</button>
+    <button class="btn active" id="btn-stats" onclick="togglePanel('stats-panel','btn-stats')">Stats</button>
+    <button class="btn active" id="btn-legend" onclick="togglePanel('legend-panel','btn-legend')">Legend</button>
+    <div class="divider"></div>
+    <button class="btn active" id="btn-show-roof" onclick="toggleVisibility('roof')">Roof</button>
+    <button class="btn active" id="btn-show-bays" onclick="toggleVisibility('bays')">Racks</button>
+    <button class="btn active" id="btn-show-obs" onclick="toggleVisibility('obs')">Obstacles</button>
+    <div class="divider"></div>
+    <button class="btn" id="btn-top" onclick="toggleTopDown()">Top View</button>
+    <button class="btn" id="btn-anim" onclick="replayAnimation()">▶ Replay</button>
+    <button class="btn" id="btn-heatmap" onclick="toggleHeatmap()">🌡 Heatmap</button>
+    <div class="divider"></div>
+    <button class="btn" id="btn-hide-mode" onclick="toggleHideMode()">👁️ Hide Object</button>
+    <button class="btn" id="btn-unhide" onclick="unhideAll()" style="display:none; color:#ef4444; border-color:#ef4444;">Reset Hidden</button>
+  </div>
+</div>
+
+<div id="file-panel" class="hidden">
+  <button class="btn-back-landing" onclick="showLanding()" id="back-to-landing">← Back</button>
+  <button class="btn-close-panel" onclick="toggleFilePanel()" id="close-file-panel" style="display:none;">&times;</button>
+  
+  <div class="fp-container">
+    <div class="fp-header">
+      <h2>Project Setup</h2>
+      <p>Upload your optimization results to render the 3D warehouse environment.</p>
+    </div>
+    
+    <div class="fp-grid">
+      <div class="fp-slot" id="slot-warehouse" onclick="triggerFile('warehouse')">
+        <div class="fp-badge req">REQUIRED</div>
+        <div class="fp-slot-name">WAREHOUSE.CSV</div>
+        <div class="fp-slot-desc">Polygon vertices (X, Y in mm)</div>
+        <div class="fp-slot-status" id="status-warehouse"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Browse File</div>
+      </div>
+      <div class="fp-slot" id="slot-bays" onclick="triggerFile('bays')">
+        <div class="fp-badge req">REQUIRED</div>
+        <div class="fp-slot-name">TYPES_OF_BAYS.CSV</div>
+        <div class="fp-slot-desc">Rack specifications & limits</div>
+        <div class="fp-slot-status" id="status-bays"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Browse File</div>
+      </div>
+      <div class="fp-slot" id="slot-output" onclick="triggerFile('output')" style="border-color:rgba(34,197,94,0.3);">
+        <div class="fp-badge opt" style="background:rgba(34,197,94,0.12);color:#4ade80;border-color:rgba(34,197,94,0.3);">OPTIONAL</div>
+        <div class="fp-slot-name" style="color:#4ade80;">OUTPUT.CSV</div>
+        <div class="fp-slot-desc">Sube un resultado previo, o usa <strong style="color:var(--text-main)">▶ Run Optimizer</strong> para generarlo automáticamente.</div>
+        <div class="fp-slot-status" id="status-output"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Browse File (optional)</div>
+      </div>
+      <div class="fp-slot" id="slot-obstacles" onclick="triggerFile('obstacles')">
+        <div class="fp-badge opt">OPTIONAL</div>
+        <div class="fp-slot-name">OBSTACLES.CSV</div>
+        <div class="fp-slot-desc">Pillars & restricted zones</div>
+        <div class="fp-slot-status" id="status-obstacles"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Browse File</div>
+      </div>
+      <div class="fp-slot" id="slot-ceiling" onclick="triggerFile('ceiling')">
+        <div class="fp-badge opt">OPTIONAL</div>
+        <div class="fp-slot-name">CEILING.CSV</div>
+        <div class="fp-slot-desc">Height profile data</div>
+        <div class="fp-slot-status" id="status-ceiling"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Browse File</div>
+      </div>
+      <div class="fp-slot" id="slot-demo" onclick="loadDemo()" style="border-style: solid; border-color: var(--accent-blue);">
+        <div class="fp-badge demo">DEMO</div>
+        <div class="fp-slot-name" style="color: var(--accent-blue);">LOAD EXAMPLE</div>
+        <div class="fp-slot-desc">Don't have files? Try our demo scene.</div>
+        <div class="fp-slot-status" style="color: var(--accent-blue);">Click to load sample data</div>
+      </div>
+    </div>
+    
+    <div class="fp-footer">
+      <div class="fp-hint">System uses <strong>Millimetres (mm)</strong> for layout and <strong>Degrees (°)</strong> for rotation.</div>
+      <div class="fp-actions">
+        <button class="btn btn-large" onclick="clearAll()">Clear All</button>
+        <button class="btn btn-large" id="btn-run-optimizer" onclick="runOptimizer()" style="border-color:#4ade80;color:#4ade80;background:rgba(34,197,94,0.08);">▶ Run Optimizer</button>
+        <button class="btn btn-primary btn-large" onclick="buildSceneFromPanel()">Render 3D Scene</button>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="fi-warehouse" accept=".csv,.txt" onchange="fileLoaded(event,'warehouse')">
+  <input type="file" id="fi-bays"      accept=".csv,.txt" onchange="fileLoaded(event,'bays')">
+  <input type="file" id="fi-output"    accept=".csv,.txt" onchange="fileLoaded(event,'output')">
+  <input type="file" id="fi-obstacles" accept=".csv,.txt" onchange="fileLoaded(event,'obstacles')">
+  <input type="file" id="fi-ceiling"   accept=".csv,.txt" onchange="fileLoaded(event,'ceiling')">
+</div>
+
+<div id="stats-panel" class="side-panel hidden">
+  <div class="panel-header">KPI Dashboard</div>
+  <div class="score-box">
+    <div class="score-label">Objective Function</div>
+    <div class="score-num" id="score-val">—</div>
+  </div>
+  <div class="stat-row"><span class="stat-label">Bays placed</span><span class="stat-value orange" id="s-bays">0</span></div>
+  <div class="stat-row"><span class="stat-label">Storage Area</span><span class="stat-value blue" id="s-area">—</span></div>
+  <div class="stat-row"><span class="stat-label">Space Utility</span><span class="stat-value blue" id="s-coverage">—</span></div>
+  <div class="stat-row"><span class="stat-label">Total Cost</span><span class="stat-value" id="s-price">—</span></div>
+  <div class="stat-row"><span class="stat-label">Pallet Capacity</span><span class="stat-value" id="s-load">—</span></div>
+  <div class="stat-row"><span class="stat-label">Obstacles</span><span class="stat-value" id="s-obs">0</span></div>
+  <div class="stat-row"><span class="stat-label">Facility Area</span><span class="stat-value" id="s-warea">—</span></div>
+  <div id="pick-counter"><span>Pallets picked</span><span class="pc-num" id="s-picked">0</span></div>
+</div>
+
+<div id="pallet-panel">
+  <div class="panel-header">
+    Pallet Inspector
+    <button class="panel-close" onclick="closePalletPanel()" title="Close">&times;</button>
+  </div>
+  <div id="pallet-panel-body">
+    <div class="pp-empty-msg">Click any pallet in the scene to inspect it.</div>
+  </div>
+</div>
+
+<div id="legend-panel" class="side-panel hidden">
+  <div class="panel-header">Rack Profiles</div>
+  <div id="legend-body"></div>
+</div>
+
+<div id="tooltip">
+  <div class="tt-title" id="tt-title">—</div>
+  <div class="tt-row"><span>Type ID</span><span id="tt-typeid">—</span></div>
+  <div class="tt-row"><span>W × D (mm)</span><span id="tt-size">—</span></div>
+  <div class="tt-row"><span>Height</span><span id="tt-height">—</span></div>
+  <div class="tt-row"><span>Capacity</span><span id="tt-loads">—</span></div>
+  <div class="tt-row"><span>Price</span><span id="tt-price">—</span></div>
+  <div class="tt-row"><span>Rotation</span><span id="tt-rot">—</span></div>
+</div>
+
+<div id="hint">DRAG TO ORBIT &nbsp;·&nbsp; SCROLL TO ZOOM &nbsp;·&nbsp; RIGHT-DRAG TO PAN &nbsp;·&nbsp; CLICK PALLET TO INSPECT</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  CONSTANTS & COLORS
+// ═══════════════════════════════════════════════════════════════
+const SCALE = 0.001; // mm → m
+const mm = v => v * SCALE;
+
+const COL_UPRIGHT  = 0xf25c05;  // Mecalux orange
+const COL_BEAM     = 0x124d90;  // Mecalux corporate blue (actualizado)
+const COL_PALLET   = 0xc19a6b;  // wood
+const COL_LOAD     = 0x8a99a8;  // grey wrapped load
+
+// Pallet status colors (for heatmap mode)
+const STATUS_COLORS = {
+  ok:      { hex: 0x22c55e, css: '#4ade80', label: 'In stock',     cls: 'pp-status-ok' },
+  warn:    { hex: 0xfbbf24, css: '#fbbf24', label: 'Expiring',     cls: 'pp-status-warn' },
+  blocked: { hex: 0xef4444, css: '#f87171', label: 'Blocked',      cls: 'pp-status-blocked' },
+  empty:   { hex: 0x475569, css: '#94a3b8', label: 'Empty slot',   cls: 'pp-status-empty' },
+};
+
+// Deterministic pseudo-random based on a seed string (stable IDs across rebuilds)
+function seededRandom(seed) {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967295; };
+}
+
+const SKU_PREFIXES = ['SKU', 'REF', 'ART', 'MEC'];
+function generatePalletData(rackIdx, levelIdx, posIdx, isFilled, type) {
+  const id = `B${rackIdx}-L${levelIdx + 1}-P${posIdx + 1}`;
+  if (!isFilled) {
+    return { id, status: 'empty', sku: null, weight: null, entryDate: null, level: levelIdx + 1, position: posIdx + 1 };
+  }
+  const rng = seededRandom(id);
+  const r = rng();
+  const status = r < 0.08 ? 'blocked' : r < 0.22 ? 'warn' : 'ok';
+  const sku = SKU_PREFIXES[Math.floor(rng() * SKU_PREFIXES.length)] + '-' + Math.floor(rng() * 90000 + 10000);
+  const weight = Math.round((150 + rng() * 850) * 10) / 10; // 150–1000 kg
+  const daysAgo = Math.floor(rng() * 180);
+  const d = new Date(); d.setDate(d.getDate() - daysAgo);
+  const entryDate = d.toISOString().slice(0, 10);
+  return { id, status, sku, weight, entryDate, level: levelIdx + 1, position: posIdx + 1, typeId: type.id };
+}
+
+// Frame colors based on ID
+const FRAME_COLORS = [
+  0xf25c05, 0x2563eb, 0x16a34a, 0x9333ea,
+  0xca8a04, 0x0891b2, 0xe11d48, 0x475569,
+];
+const FRAME_CSS = FRAME_COLORS.map(c => '#'+c.toString(16).padStart(6,'0'));
+
+// ═══════════════════════════════════════════════════════════════
+//  GLOBALS
+// ═══════════════════════════════════════════════════════════════
+const csvData = { warehouse:null, bays:null, output:null, obstacles:null, ceiling:null };
+let scene, camera, renderer, raycaster, mouse, clock;
+let rackGroups = [], obstMeshes = [], ceilingMesh = null;
+let parsedWarehouse = null;
+let showIDs = false, isTopDown = false, animating = false;
+let camTarget = new THREE.Vector3();
+let orbitSph = { theta: Math.PI*0.4, phi: Math.PI*0.28, radius: 80 };
+
+// ── Pallet inspector state ──
+let palletMeshes = [];          // all interactive pallet load meshes
+let selectedPallet = null;      // currently inspected mesh
+let pickedCount = 0;
+let heatmapMode = false;
+
+// ═══════════════════════════════════════════════════════════════
+//  HIDE OBJECTS (CLICK TO HIDE) - FIXED
+// ═══════════════════════════════════════════════════════════════
+let hideMode = false;
+let hiddenObjects = [];
+
+function toggleHideMode() {
+  hideMode = !hideMode;
+  document.getElementById('btn-hide-mode').classList.toggle('active', hideMode);
+  document.getElementById('canvas-container').style.cursor = hideMode ? 'crosshair' : 'default';
+}
+
+function unhideAll() {
+  hiddenObjects.forEach(obj => obj.visible = true);
+  hiddenObjects = [];
+  document.getElementById('btn-unhide').style.display = 'none';
+}
+
+window.addEventListener('click', e => {
+  if (!hideMode) return;
+  // Ignore clicks on the top navigation bar
+  if (e.clientY < 60) return;
+  
+  // Calculate exactly where the mouse is at the moment of the click
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  
+  raycaster.setFromCamera(mouse, camera);
+  const allMeshes = [];
+  
+  rackGroups.forEach(g => g.traverse(c => { if(c.isMesh) allMeshes.push(c); }));
+  obstMeshes.forEach(m => { if(m.isMesh) allMeshes.push(m); });
+
+  const hits = raycaster.intersectObjects(allMeshes);
+  if (hits.length) {
+    let obj = hits[0].object;
+    while (obj.parent && !obj.userData.isRack && !obj.userData.isObstacle) {
+      obj = obj.parent;
+    }
+    
+    if (obj.userData.isRack || obj.userData.isObstacle) {
+      obj.visible = false;
+      hiddenObjects.push(obj);
+      document.getElementById('btn-unhide').style.display = 'inline-block';
+    }
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  CSV PARSING
+// ═══════════════════════════════════════════════════════════════
+const parseCSV = t => t.trim().split('\n').map(l=>l.trim()).filter(l=>l&&!l.startsWith('#')).map(l=>l.split(',').map(v=>v.trim()));
+const parseWarehouse = t => parseCSV(t).map(r=>({x:+r[0],y:+r[1]}));
+const parseBays      = t => parseCSV(t).map(r=>({id:+r[0],width:+r[1],depth:+r[2],height:+r[3],gap:+r[4],nLoads:+r[5],price:+r[6]}));
+const parseOutput    = t => parseCSV(t).map(r=>({typeId:+r[0],x:+r[1],y:+r[2],rotation:+r[3]}));
+const parseObstacles = t => parseCSV(t).map(r=>({x:+r[0],y:+r[1],width:+r[2],depth:+r[3]}));
+const parseCeiling   = t => parseCSV(t).map(r=>({x:+r[0],h:+r[1]})).sort((a,b)=>a.x-b.x);
+
+function polyArea(v) {
+  let a=0; for(let i=0;i<v.length;i++){const j=(i+1)%v.length; a+=v[i].x*v[j].y-v[j].x*v[i].y;} return Math.abs(a)/2;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  FILE UI
+// ═══════════════════════════════════════════════════════════════
+function triggerFile(s) { document.getElementById('fi-'+s).click(); }
+function fileLoaded(e,slot) {
+  const f=e.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{ csvData[slot]=ev.target.result; markSlot(slot,'✓ '+f.name); e.target.value=''; };
+  r.readAsText(f);
+}
+function markSlot(slot,msg) {
+  document.getElementById('slot-'+slot).classList.add('loaded');
+  document.getElementById('status-'+slot).innerHTML=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> ` + msg;
+}
+function clearAll() {
+  Object.keys(csvData).forEach(k=>csvData[k]=null);
+  ['warehouse','bays','output','obstacles','ceiling'].forEach(s=>{
+    document.getElementById('slot-'+s).classList.remove('loaded');
+    document.getElementById('status-'+s).innerHTML=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Browse File`;
+  });
+  document.getElementById('slot-demo').classList.remove('loaded');
+  const sd = document.getElementById('status-demo'); if (sd) sd.textContent = "Click to load sample data";
+  clearScene();
+  document.getElementById('close-file-panel').style.display = 'none';
+}
+function toggleFilePanel() {
+  const p = document.getElementById('file-panel');
+  p.classList.toggle('hidden');
+}
+function togglePanel(id,btnId) {
+  const h=document.getElementById(id).classList.toggle('hidden');
+  document.getElementById(btnId).classList.toggle('active',!h);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  LANDING ENTRY POINTS
+// ═══════════════════════════════════════════════════════════════
+function hideLanding() {
+  document.getElementById('landing').classList.add('hidden');
+}
+function showLanding() {
+  document.getElementById('landing').classList.remove('hidden');
+  document.getElementById('file-panel').classList.add('hidden');
+}
+function enterUserFlow() {
+  // Hide landing, reveal Project Setup panel for user-supplied CSVs
+  hideLanding();
+  document.getElementById('file-panel').classList.remove('hidden');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DEMO
+// ═══════════════════════════════════════════════════════════════
+function loadDemo() {
+  csvData.warehouse='0,0\n10000,0\n10000,3000\n3000,3000\n3000,10000\n0,10000';
+  csvData.obstacles='750,750,750,750\n8000,2500,1500,300\n1500,4200,200,4600';
+  csvData.ceiling='0,3000\n3000,2000\n6000,3000';
+  csvData.bays='0,800,1200,2800,200,4,2000\n1,1600,1200,2800,200,8,2500\n2,2400,1200,2800,200,12,2800\n3,800,1000,1800,150,3,1800\n4,1600,1000,1800,150,6,2300\n5,2400,1000,1800,150,9,2600';
+  csvData.output=[
+    '2,2000,0,0', '2,4500,0,0', '1,7000,0,0', '0,8700,0,0',
+    '2,3000,1700,0', '2,5500,1700,0', '1,8000,1700,0',
+    '5,0,3500,90', '5,0,6100,90',
+    '4,1500,3500,90', '4,1500,5300,90', '3,1500,7100,90', '3,1500,8000,90',
+  ].join('\n');
+  ['warehouse','bays','output','obstacles','ceiling','demo'].forEach(s=>markSlot(s,'Loaded Demo'));
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  BUILD SCENE
+// ═══════════════════════════════════════════════════════════════
+function buildScene() {
+  if (!csvData.warehouse||!csvData.bays) { alert('Please load WAREHOUSE and TYPES_OF_BAYS files first.'); return; }
+  try {
+    const W  = parseWarehouse(csvData.warehouse);
+    parsedWarehouse = W;
+    const B  = parseBays(csvData.bays);
+    const O  = csvData.output ? parseOutput(csvData.output) : [];
+    const Ob = csvData.obstacles ? parseObstacles(csvData.obstacles) : [];
+    const Ce = csvData.ceiling   ? parseCeiling(csvData.ceiling)   : [];
+    
+    clearScene();
+    buildFloor(W);
+    buildWalls(W, Ce);
+    buildObstacles(Ob, Ce);
+    buildRacks(B, O, Ce);
+    if (Ce.length) buildCeilingPlane(W, Ce);
+    
+    updateStats(W, B, O, Ob);
+    buildLegend(B, O);
+    centerCamera(W);
+    // Activate top-down view immediately after building scene
+    isTopDown = true;
+    document.getElementById('btn-top').classList.add('active');
+    fitTopDownView();
+    camera.updateProjectionMatrix();
+    updateCam();
+    animateIn();
+    
+    // Hide panel and show UI
+    document.getElementById('file-panel').classList.add('hidden');
+    document.getElementById('close-file-panel').style.display = 'block'; // Allow reopening and closing
+    document.getElementById('back-to-landing').style.display = 'none';   // No longer back to landing once scene exists
+    
+    // Show side panels automatically
+    document.getElementById('stats-panel').classList.remove('hidden');
+    document.getElementById('legend-panel').classList.remove('hidden');
+    
+  } catch(e) { alert('Parse error: '+e.message); console.error(e); }
+}
+
+function buildFloor(verts) {
+  const shape = new THREE.Shape();
+  shape.moveTo(mm(verts[0].x), mm(verts[0].y));
+  for(let i=1;i<verts.length;i++) shape.lineTo(mm(verts[i].x), mm(verts[i].y));
+  shape.closePath();
+
+  // ── Floor with embedded logo texture ──
+  const xs = verts.map(v=>v.x), ys = verts.map(v=>v.y);
+  const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+  const floorW = maxX - minX, floorD = maxY - minY;
+
+  const logoCanvas = document.createElement('canvas');
+  const texRes = 2048;
+  logoCanvas.width = texRes; logoCanvas.height = texRes;
+  const lctx = logoCanvas.getContext('2d');
+
+  // Dark base
+  lctx.fillStyle = '#1e2530';
+  lctx.fillRect(0,0,texRes,texRes);
+
+  // Subtle grid lines
+  lctx.strokeStyle = 'rgba(74,85,104,0.25)';
+  lctx.lineWidth = 1;
+  for(let i=0;i<texRes;i+=64) {
+    lctx.beginPath(); lctx.moveTo(i,0); lctx.lineTo(i,texRes); lctx.stroke();
+    lctx.beginPath(); lctx.moveTo(0,i); lctx.lineTo(texRes,i); lctx.stroke();
+  }
+
+  // ── MECALUX logo text centered ──
+  const cx = texRes/2, cy = texRes/2;
+
+  // Orange glow halo
+  const grd = lctx.createRadialGradient(cx,cy,texRes*0.05, cx,cy,texRes*0.42);
+  grd.addColorStop(0,'rgba(242,92,5,0.12)');
+  grd.addColorStop(1,'rgba(242,92,5,0)');
+  lctx.fillStyle = grd;
+  lctx.fillRect(0,0,texRes,texRes);
+
+  // MECA text
+  lctx.font = 'bold 260px Barlow Condensed, Arial Black, sans-serif';
+  lctx.textAlign = 'center';
+  lctx.textBaseline = 'middle';
+  lctx.fillStyle = 'rgba(255,255,255,0.055)';
+  lctx.fillText('MECA', cx - 195, cy);
+
+  // LUX text  
+  lctx.fillStyle = 'rgba(242,92,5,0.13)';
+  lctx.fillText('LUX', cx + 250, cy);
+
+  // Tagline below
+  lctx.font = 'bold 60px Barlow Condensed, Arial, sans-serif';
+  lctx.fillStyle = 'rgba(148,163,184,0.055)';
+  lctx.letterSpacing = '0.5em';
+  lctx.fillText('WAREHOUSE OPTIMIZER', cx, cy + 185);
+
+  // Top and bottom border lines
+  lctx.strokeStyle = 'rgba(242,92,5,0.15)';
+  lctx.lineWidth = 4;
+  lctx.beginPath(); lctx.moveTo(texRes*0.1,cy-200); lctx.lineTo(texRes*0.9,cy-200); lctx.stroke();
+  lctx.beginPath(); lctx.moveTo(texRes*0.1,cy+200); lctx.lineTo(texRes*0.9,cy+200); lctx.stroke();
+
+  const logoTex = new THREE.CanvasTexture(logoCanvas);
+  const aspect = floorW / floorD;
+  logoTex.repeat.set(1,1);
+
+  const geo = new THREE.ShapeGeometry(shape, 8);
+  const mat = new THREE.MeshStandardMaterial({
+    map: logoTex,
+    roughness: 0.95, metalness: 0.0, side: THREE.DoubleSide
+  });
+  const floor = new THREE.Mesh(geo, mat);
+  floor.rotation.x = Math.PI/2;
+  floor.position.y = 0;
+  floor.receiveShadow = true;
+  floor.userData.isWH = true;
+  scene.add(floor);
+
+  buildFloorTiles(verts);
+
+  const pts = [...verts, verts[0]].map(v => new THREE.Vector3(mm(v.x), 0.02, mm(v.y)));
+  const lg = new THREE.BufferGeometry().setFromPoints(pts);
+  const ll = new THREE.Line(lg, new THREE.LineBasicMaterial({ color:0xf25c05, linewidth:3 }));
+  ll.userData.isWH = true;
+  scene.add(ll);
+}
+
+function buildFloorTiles(verts) {
+  const xs = verts.map(v=>v.x), ys = verts.map(v=>v.y);
+  const minX=Math.min(...xs), maxX=Math.max(...xs);
+  const minY=Math.min(...ys), maxY=Math.max(...ys);
+  const tileSize = 1000; // 1 meter grid
+
+  function inPoly(px, pz) {
+    let inside = false;
+    for (let i = 0, j = verts.length-1; i < verts.length; j = i++) {
+      const xi=verts[i].x, yi=verts[i].y, xj=verts[j].x, yj=verts[j].y;
+      if (((yi>pz) !== (yj>pz)) && (px < (xj-xi)*(pz-yi)/(yj-yi)+xi)) inside=!inside;
+    }
+    return inside;
+  }
+
+  const mat = new THREE.LineBasicMaterial({ color:0x4a5568, transparent:true, opacity:0.3 });
+
+  function addClippedLine(x0, y0, x1, y1) {
+    const samples = 50;
+    let segStart = null;
+    for (let s = 0; s <= samples; s++) {
+      const t = s / samples;
+      const px = x0 + (x1-x0)*t;
+      const py = y0 + (y1-y0)*t;
+      if (inPoly(px, py)) {
+        if (segStart === null) segStart = { x:px, y:py };
+      } else if (segStart !== null) {
+        const pts = [
+          new THREE.Vector3(mm(segStart.x), 0.015, mm(segStart.y)),
+          new THREE.Vector3(mm(px), 0.015, mm(py))
+        ];
+        const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
+        l.userData.isWH = true; scene.add(l);
+        segStart = null;
+      }
+    }
+    if (segStart !== null) {
+      const pts = [
+        new THREE.Vector3(mm(segStart.x), 0.015, mm(segStart.y)),
+        new THREE.Vector3(mm(x1), 0.015, mm(y1))
+      ];
+      const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
+      l.userData.isWH = true; scene.add(l);
+    }
+  }
+
+  for(let x=minX; x<=maxX; x+=tileSize) addClippedLine(x, minY, x, maxY);
+  for(let y=minY; y<=maxY; y+=tileSize) addClippedLine(minX, y, maxX, y);
+}
+
+// Low concrete kickplate & columns
+function buildWalls(verts, ceiling) {
+  const baseH = 0.2; // 20cm height requested
+
+  for(let i=0;i<verts.length;i++) {
+    const a=verts[i], b=verts[(i+1)%verts.length];
+    const dx=mm(b.x-a.x), dz=mm(b.y-a.y);
+    const len=Math.sqrt(dx*dx+dz*dz);
+    if(len<0.02) continue;
+    const cx=mm((a.x+b.x)/2), cz=mm((a.y+b.y)/2);
+    const angle=-Math.atan2(dz,dx);
+
+    const baseMat=new THREE.MeshStandardMaterial({color:0x52596a,roughness:0.95,metalness:0.0});
+    const baseGeo=new THREE.BoxGeometry(len, baseH, 0.18);
+    const baseMesh=new THREE.Mesh(baseGeo,baseMat);
+    baseMesh.position.set(cx, baseH/2, cz);
+    baseMesh.rotation.y=angle;
+    baseMesh.castShadow=true; baseMesh.receiveShadow=true;
+    baseMesh.userData.isWH=true; scene.add(baseMesh);
+
+    const colH = ceilingHeightAtMM(ceiling, a.x);
+    const colMat=new THREE.MeshStandardMaterial({color:0x3d4554,roughness:0.7,metalness:0.6});
+    const col=new THREE.Mesh(new THREE.BoxGeometry(0.2,colH,0.2),colMat);
+    col.position.set(mm(a.x), colH/2, mm(a.y));
+    col.castShadow=true; col.userData.isWH=true; scene.add(col);
+  }
+}
+
+function buildObstacles(obs, ceiling) {
+  obs.forEach(o => {
+    const centerXmm = o.x + o.width / 2;
+    const ceilH = ceilingHeightAtMM(ceiling, centerXmm);
+    const h = Math.max(0.5, ceilH - 0.05);
+
+    const geo = new THREE.BoxGeometry(mm(o.width), h, mm(o.depth));
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xdc2626, emissive: 0x7f1d1d, emissiveIntensity: 0.3,
+      roughness: 0.6, metalness: 0.2
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(mm(o.x)+mm(o.width)/2, h/2, mm(o.y)+mm(o.depth)/2);
+    mesh.castShadow = true; mesh.receiveShadow = false;
+    mesh.userData = { isObstacle:true, obs:o };
+    scene.add(mesh); obstMeshes.push(mesh);
+
+    const sg = new THREE.BoxGeometry(mm(o.width)+0.05, 0.05, mm(o.depth)+0.05);
+    const stripe = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({color:0xfbbf24, emissive:0x78350f, emissiveIntensity:0.2, roughness:1}));
+    stripe.position.set(mm(o.x)+mm(o.width)/2, 0.025, mm(o.y)+mm(o.depth)/2);
+    stripe.userData = { isObstacle:true }; scene.add(stripe); obstMeshes.push(stripe);
+  });
+}
+
+function ceilingHeightAtMM(ceiling, xMM) {
+  if (!ceiling || ceiling.length === 0) return 6.0;
+  const sorted = [...ceiling].sort((a,b) => a.x - b.x);
+  if (xMM < sorted[0].x) return mm(sorted[0].h);
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    if (xMM >= sorted[i].x) return mm(sorted[i].h);
+  }
+  return mm(sorted[0].h);
+}
+
+function buildRacks(bayTypes, output, ceiling=[]) {
+  const bayMap = {};
+  bayTypes.forEach(b => bayMap[b.id] = b);
+
+  output.forEach((placed, idx) => {
+    const type = bayMap[placed.typeId];
+    if (!type) return;
+
+    const group = new THREE.Group();
+    const rotDeg = placed.rotation || 0;
+    const rotRad = rotDeg * Math.PI / 180;
+
+    const W = mm(type.width), D = mm(type.depth);
+    // Clamp rack height to ceiling at its X position
+    const ceilH = ceilingHeightAtMM(ceiling, placed.x);
+    const H = Math.min(mm(type.height), ceilH - 0.05);
+    const frameColor = FRAME_COLORS[type.id % FRAME_COLORS.length];
+
+    buildRackGeometry(group, W, D, H, type, frameColor, idx);
+
+    const swapped = (rotDeg === 90 || rotDeg === 270);
+    const cx = mm(placed.x) + (swapped ? D/2 : W/2);
+    const cz = mm(placed.y) + (swapped ? W/2 : D/2);
+
+    group.position.set(cx, 0, cz);
+    group.rotation.y = -rotRad;
+    group.scale.y = 0;
+    group.userData = { isRack:true, type, placed, W, D, H, animIndex:idx };
+
+    scene.add(group);
+    rackGroups.push(group);
+  });
+}
+
+function buildRackGeometry(group, W, D, H, type, frameColor, rackIdx) {
+  const uprightT  = 0.05, beamT = 0.04, diagonalT = 0.025, palletH = 0.14, loadH = 0.28;
+  const uprightMat = new THREE.MeshStandardMaterial({ color:frameColor, roughness:0.4, metalness:0.8 });
+  const beamMat    = new THREE.MeshStandardMaterial({ color:COL_BEAM,   roughness:0.5, metalness:0.7 });
+  const footMat    = new THREE.MeshStandardMaterial({ color:0x111827,   roughness:0.9, metalness:0.1 });
+
+  const uprightPositions = [
+    [-W/2 + uprightT/2, 0,  -D/2 + uprightT/2], [ W/2 - uprightT/2, 0,  -D/2 + uprightT/2],
+    [-W/2 + uprightT/2, 0,   D/2 - uprightT/2], [ W/2 - uprightT/2, 0,   D/2 - uprightT/2],
+  ];
+  uprightPositions.forEach(([x,,z]) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(uprightT, H, uprightT), uprightMat);
+    m.position.set(x, H/2, z); m.castShadow = true; group.add(m);
+    const fm = new THREE.Mesh(new THREE.BoxGeometry(uprightT*2.5, 0.04, uprightT*2.5), footMat);
+    fm.position.set(x, 0.02, z); group.add(fm);
+  });
+
+  [0,1].forEach(side => {
+    const zPos = side === 0 ? -D/2 + uprightT : D/2 - uprightT;
+    const levels = Math.max(2, Math.floor(H / 0.8));
+    for(let i=0;i<levels;i++) {
+      const y0 = i * (H/levels), y1 = (i+1) * (H/levels);
+      const x0 = (i%2===0) ? -W/2+uprightT : W/2-uprightT;
+      const x1 = (i%2===0) ? W/2-uprightT  : -W/2+uprightT;
+      const len = Math.sqrt((x1-x0)**2 + (y1-y0)**2);
+      const ang = Math.atan2(y1-y0, x1-x0);
+      const dm = new THREE.Mesh(new THREE.BoxGeometry(len, diagonalT, diagonalT), uprightMat);
+      dm.position.set((x0+x1)/2, (y0+y1)/2, zPos); dm.rotation.z = ang; group.add(dm);
+    }
+  });
+
+  const nLevels = type.nLoads > 0 ? Math.min(type.nLoads, 6) : 3;
+  const levelH  = (H - palletH) / nLevels;
+
+  for(let lv=0; lv<=nLevels; lv++) {
+    const y = lv * levelH + (lv===0 ? 0.25 : 0);
+    addBeam(group, [-W/2+uprightT, y, -D/2+uprightT/2], [W/2-uprightT, y, -D/2+uprightT/2], beamT, beamMat);
+    addBeam(group, [-W/2+uprightT, y,  D/2-uprightT/2], [W/2-uprightT, y,  D/2-uprightT/2], beamT, beamMat);
+    if(lv < nLevels) addLoadLevel(group, W, D, y, palletH, loadH, lv, type.nLoads, rackIdx, type);
+  }
+}
+
+function addBeam(group, p0, p1, t, mat) {
+  const dx=p1[0]-p0[0], dy=p1[1]-p0[1], dz=p1[2]-p0[2];
+  const len=Math.sqrt(dx*dx+dy*dy+dz*dz);
+  const m=new THREE.Mesh(new THREE.BoxGeometry(len, t, t),mat);
+  m.position.set((p0[0]+p1[0])/2,(p0[1]+p1[1])/2,(p0[2]+p1[2])/2);
+  m.rotation.y = Math.atan2(dz,dx); m.castShadow=true; group.add(m);
+}
+
+function addLoadLevel(group, W, D, baseY, palletH, loadH, levelIdx, totalLevels, rackIdx, type) {
+  const palletMat = new THREE.MeshStandardMaterial({color:COL_PALLET, roughness:0.9, metalness:0.0});
+  const loadColors = [0x94a3b8, 0x64748b, 0x475569, 0x3b82f6, 0x2563eb];
+  const nPallets   = Math.max(1, Math.round((W - 0.1) / 1.2));
+  const palletW = (W - 0.1) / nPallets;
+
+  // Deterministic fill pattern per rack/level/position so it is stable across rebuilds
+  const fillRng = seededRandom(`fill-${rackIdx}-${levelIdx}`);
+  const filledRatio = Math.min(1, (totalLevels - levelIdx) / totalLevels + 0.3);
+
+  for(let p=0; p<nPallets; p++) {
+    const px = -W/2 + 0.05 + palletW/2 + p*palletW;
+    const pm = new THREE.Mesh(new THREE.BoxGeometry(palletW-0.04, palletH, D-0.1), palletMat);
+    pm.position.set(px, baseY + 0.06 + palletH/2, 0); pm.castShadow=true; group.add(pm);
+
+    const isFilled = (fillRng() < filledRatio) || levelIdx === 0;
+    const palletData = generatePalletData(rackIdx, levelIdx, p, isFilled, type);
+
+    if (isFilled) {
+      const lc = loadColors[(p + levelIdx) % loadColors.length];
+      const lMat = new THREE.MeshStandardMaterial({color:lc, roughness:0.7, metalness:0.05});
+      const loadRng = seededRandom(`h-${rackIdx}-${levelIdx}-${p}`);
+      const lH = loadH * (0.7 + loadRng()*0.5);
+      const lm  = new THREE.Mesh(new THREE.BoxGeometry(palletW-0.08, lH, D-0.16), lMat);
+      lm.position.set(px, baseY + 0.06 + palletH + lH/2, 0); lm.castShadow=true;
+
+      // Tag this load mesh as a pickable pallet
+      lm.userData = {
+        isPallet: true,
+        pallet: palletData,
+        baseColor: lc,
+        baseMaterial: lMat,
+      };
+      group.add(lm);
+      palletMeshes.push(lm);
+
+      const wrapMat=new THREE.MeshStandardMaterial({color:0xe2e8f0,transparent:true,opacity:0.25,roughness:0.3});
+      const wg=new THREE.BoxGeometry(palletW-0.06, 0.04, D-0.14);
+      [0.25,0.5,0.75].forEach(f=>{
+        const wm=new THREE.Mesh(wg,wrapMat); wm.position.set(px, baseY+0.06+palletH+lH*f, 0); group.add(wm);
+      });
+    } else {
+      // Empty slot — tag the wooden pallet itself as pickable so the user can still inspect "empty"
+      pm.userData = {
+        isPallet: true,
+        pallet: palletData,
+        baseColor: COL_PALLET,
+        baseMaterial: palletMat,
+      };
+      palletMeshes.push(pm);
+    }
+  }
+}
+
+function buildCeilingPlane(verts, ceiling) {
+  scene.children.filter(c => c.userData.isCeiling).forEach(c => scene.remove(c));
+  const xs = verts.map(v => v.x), ys = verts.map(v => v.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+
+  const segments = [];
+  const sorted = [...ceiling].sort((a,b) => a.x - b.x);
+  for (let i = 0; i < sorted.length; i++) {
+    const xS = sorted[i].x, xE = (i+1 < sorted.length) ? sorted[i+1].x : maxX;
+    if (xE > xS) segments.push({ xStart: xS, xEnd: xE, h: sorted[i].h });
+  }
+  if (sorted.length && sorted[0].x > minX) segments.unshift({ xStart: minX, xEnd: sorted[0].x, h: sorted[0].h });
+
+  function inPoly(px, pz) {
+    let inside = false;
+    for (let i = 0, j = verts.length-1; i < verts.length; j = i++) {
+      const xi=verts[i].x, yi=verts[i].y, xj=verts[j].x, yj=verts[j].y;
+      if (((yi>pz) !== (yj>pz)) && (px < (xj-xi)*(pz-yi)/(yj-yi)+xi)) inside=!inside;
+    }
+    return inside;
+  }
+
+  const ceilMat = new THREE.MeshStandardMaterial({ color: 0x1e2430, roughness: 0.9, metalness: 0.1, side: THREE.DoubleSide });
+
+  segments.forEach(seg => {
+    const h = mm(seg.h);
+    const xs0 = seg.xStart, xs1 = seg.xEnd;
+    const cellsX = Math.max(1, Math.ceil((xs1-xs0) / 500)), cellsY = Math.max(1, Math.ceil((maxY-minY) / 500));
+    const cellW = (xs1-xs0) / cellsX, cellH = (maxY-minY) / cellsY;
+
+    for (let i = 0; i < cellsX; i++) {
+      for (let j = 0; j < cellsY; j++) {
+        const xA = xs0 + i*cellW, xB = xs0 + (i+1)*cellW, yA = minY + j*cellH, yB = minY + (j+1)*cellH;
+        if (!inPoly((xA+xB)/2, (yA+yB)/2)) continue;
+        const positions = new Float32Array([ mm(xA), h, mm(yA), mm(xB), h, mm(yA), mm(xB), h, mm(yB), mm(xA), h, mm(yA), mm(xB), h, mm(yB), mm(xA), h, mm(yB) ]);
+        const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(positions, 3)); geo.computeVertexNormals();
+        const mesh = new THREE.Mesh(geo, ceilMat); mesh.userData = { isWH:true, isCeiling:true }; scene.add(mesh);
+      }
+    }
+  });
+
+}
+
+function clearScene() {
+  scene.children.filter(c => c.userData.isWH || c.userData.isRack || c.userData.isObstacle || c.userData.isCeiling).forEach(c => scene.remove(c));
+  rackGroups=[]; obstMeshes=[]; ceilingMesh=null;
+  palletMeshes = [];
+  selectedPallet = null;
+  pickedCount = 0;
+  const pc = document.getElementById('s-picked'); if (pc) pc.textContent = '0';
+  closePalletPanel();
+}
+
+function animateIn() {
+  if(animating)return; animating=true;
+  let elapsed=0; const dur=0.6, delay=0.03;
+  clock.getDelta();
+  function tick() {
+    elapsed+=clock.getDelta();
+    rackGroups.forEach((g,i)=>{ const t=Math.max(0,Math.min(1,(elapsed-i*delay)/dur)); g.scale.y=easeOutBack(t); });
+    if(rackGroups.some((_,i)=>(elapsed-i*delay)<dur)) requestAnimationFrame(tick);
+    else { animating=false; rackGroups.forEach(g=>g.scale.y=1); }
+  }
+  requestAnimationFrame(tick);
+}
+function easeOutBack(t){const c=2.5942;return 1+c*Math.pow(t-1,3)+(c-1)*Math.pow(t-1,2);}
+function replayAnimation(){rackGroups.forEach(g=>g.scale.y=0); setTimeout(animateIn,80);}
+
+function updateStats(W,B,O,Ob) {
+  const bm={}; B.forEach(b=>bm[b.id]=b);
+  const wA=polyArea(W)/1e6;
+  let bA=0,tp=0,tl=0;
+  O.forEach(p=>{const t=bm[p.typeId]; if(!t)return; bA+=t.width*t.depth/1e6; tp+=t.price; tl+=t.nLoads;});
+  const cov=wA>0?(bA/wA*100).toFixed(1):'—';
+  const pct=wA>0?bA/wA:0;
+  const score=tp>0&&tl>0?Math.pow(tp/tl,2-pct).toFixed(5):'—';
+  
+  document.getElementById('s-bays').textContent=O.length;
+  document.getElementById('s-area').textContent=bA.toFixed(2)+' m²';
+  document.getElementById('s-coverage').textContent=cov+'%';
+  document.getElementById('s-price').textContent=tp?tp.toLocaleString()+' €':'—';
+  document.getElementById('s-load').textContent=tl||'—';
+  document.getElementById('s-obs').textContent=Ob.length;
+  document.getElementById('s-warea').textContent=wA.toFixed(1)+' m²';
+  document.getElementById('score-val').textContent=score;
+}
+
+function buildLegend(B,O) {
+  const cnt={}; O.forEach(p=>cnt[p.typeId]=(cnt[p.typeId]||0)+1);
+  const body=document.getElementById('legend-body'); body.innerHTML='';
+  B.forEach(t=>{
+    const c=FRAME_CSS[t.id%FRAME_COLORS.length];
+    body.innerHTML+=`
+      <div class="legend-item">
+        <div class="legend-swatch" style="background:${c}"></div>
+        <div class="legend-label">Type ${t.id} <small>${t.width}×${t.depth}mm</small></div>
+        <span class="legend-count">${cnt[t.id]||0}</span>
+      </div>`;
+  });
+  body.innerHTML+=`<div class="legend-item"><div class="legend-swatch" style="background:#dc2626"></div><div class="legend-label">Obstacle</div></div>`;
+}
+
+const visibility = { roof: true, bays: true, obs: true };
+function toggleVisibility(what) {
+  visibility[what] = !visibility[what];
+  const btnId = what === 'roof' ? 'btn-show-roof' : what === 'bays' ? 'btn-show-bays' : 'btn-show-obs';
+  document.getElementById(btnId).classList.toggle('active', visibility[what]);
+  if (what === 'roof') scene.children.filter(c => c.userData.isCeiling).forEach(c => c.visible = visibility.roof);
+  else if (what === 'bays') rackGroups.forEach(g => g.visible = visibility.bays);
+  else if (what === 'obs') scene.children.filter(c => c.userData.isObstacle).forEach(c => c.visible = visibility.obs);
+}
+
+function toggleIDs() {
+  showIDs=!showIDs;
+  document.getElementById('btn-ids').classList.toggle('active',showIDs);
+  rackGroups.forEach(g=>{
+    let lbl=g.getObjectByName('id-lbl');
+    if(!lbl&&showIDs){
+      lbl = makeLabel('T' + g.userData.placed.typeId);
+      lbl.name='id-lbl'; lbl.position.set(0, mm(g.userData.type.height)+0.5, 0); g.add(lbl);
+    }
+    if(lbl) lbl.visible=showIDs;
+  });
+}
+function makeLabel(txt){
+  const c=document.createElement('canvas'); c.width=100;c.height=40;
+  const ctx=c.getContext('2d'); ctx.fillStyle='#0f1218';
+  ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(4,4,92,32,4); else ctx.rect(4,4,92,32); ctx.fill();
+  ctx.strokeStyle='#f25c05'; ctx.lineWidth=2;
+  ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(4,4,92,32,4); else ctx.rect(4,4,92,32); ctx.stroke();
+  ctx.fillStyle='#f8fafc'; ctx.font='bold 16px sans-serif';
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(txt,50,20);
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));
+  s.scale.set(1.5,0.6,1); return s;
+}
+
+function centerCamera(verts) {
+  const xs = verts.map(v=>v.x), ys = verts.map(v=>v.y);
+  const cx = (Math.max(...xs) + Math.min(...xs)) / 2, cy = (Math.max(...ys) + Math.min(...ys)) / 2;
+  camTarget.set(mm(cx), 0, mm(cy));
+  const span = Math.max(mm(Math.max(...xs) - Math.min(...xs)), mm(Math.max(...ys) - Math.min(...ys)));
+  orbitSph.radius = span * 1.5; orbitSph.theta = Math.PI*0.35; orbitSph.phi = Math.PI*0.25;
+  updateCam();
+}
+function updateCam(){
+  const {theta,phi,radius}=orbitSph;
+  camera.position.set(camTarget.x+radius*Math.sin(phi)*Math.sin(theta), camTarget.y+radius*Math.cos(phi), camTarget.z+radius*Math.sin(phi)*Math.cos(theta));
+  camera.lookAt(camTarget);
+}
+function toggleTopDown(){
+  // Top View is ALWAYS-ON: this button is now a "Fit to view" / perspective toggle
+  isTopDown=!isTopDown;
+  document.getElementById('btn-top').classList.toggle('active',isTopDown);
+  if(isTopDown) {
+    fitTopDownView();
+  } else {
+    camera.fov=50;
+    orbitSph.phi=Math.PI*0.28;
+    orbitSph.theta=Math.PI*0.35;
+    if(parsedWarehouse) {
+      const xs=parsedWarehouse.map(v=>v.x), ys=parsedWarehouse.map(v=>v.y);
+      const cx=(Math.max(...xs)+Math.min(...xs))/2, cy=(Math.max(...ys)+Math.min(...ys))/2;
+      camTarget.set(mm(cx),0,mm(cy));
+      const span=Math.max(mm(Math.max(...xs)-Math.min(...xs)),mm(Math.max(...ys)-Math.min(...ys)));
+      orbitSph.radius=span*1.5;
+    }
+  }
+  camera.updateProjectionMatrix(); updateCam();
+}
+
+function fitTopDownView() {
+  if (!parsedWarehouse) return;
+  const xs = parsedWarehouse.map(v=>v.x), ys = parsedWarehouse.map(v=>v.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const wSpan = mm(maxX - minX), dSpan = mm(maxY - minY);
+  camera.fov = 45;
+  orbitSph.phi = 0.0001; orbitSph.theta = 0;
+  const aspect = window.innerWidth / window.innerHeight;
+  // Add 15% margin on all sides
+  const margin = 1.30;
+  orbitSph.radius = Math.max(wSpan, dSpan / aspect) * margin;
+  camTarget.set(mm((minX + maxX)/2), 0, mm((minY + maxY)/2));
+}
+
+let hoveredGroup=null;
+function onMouseMove(e){
+  if (hideMode) return;
+  mouse.x=(e.clientX/window.innerWidth)*2-1; mouse.y=-(e.clientY/window.innerHeight)*2+1;
+  raycaster.setFromCamera(mouse,camera);
+  const allMeshes=[]; rackGroups.forEach(g=>g.traverse(c=>{if(c.isMesh)allMeshes.push(c);}));
+  const hits=raycaster.intersectObjects(allMeshes);
+  const tt=document.getElementById('tooltip');
+  if(hits.length){
+    let obj=hits[0].object;
+    while(obj.parent&&!obj.userData.isRack) obj=obj.parent;
+    if(obj.userData.isRack){
+      if(obj!==hoveredGroup){ if(hoveredGroup) setHover(hoveredGroup,false); hoveredGroup=obj; setHover(obj,true); }
+      const {type,placed}=obj.userData;
+      document.getElementById('tt-title').textContent=`Bay @ (${placed.x}, ${placed.y})`;
+      document.getElementById('tt-typeid').textContent=placed.typeId;
+      document.getElementById('tt-size').textContent=type.width+' × '+type.depth;
+      document.getElementById('tt-height').textContent=type.height+' mm';
+      document.getElementById('tt-loads').textContent=type.nLoads;
+      document.getElementById('tt-price').textContent=type.price+' €';
+      document.getElementById('tt-rot').textContent=placed.rotation+'°';
+      tt.style.left=(e.clientX+16)+'px'; tt.style.top=(e.clientY+16)+'px';
+      tt.classList.add('visible'); return;
+    }
+  }
+  if(hoveredGroup){setHover(hoveredGroup,false);hoveredGroup=null;}
+  tt.classList.remove('visible');
+}
+function setHover(group,on){
+  group.traverse(c=>{
+    if(c.isMesh&&c.material) {
+      if(!c.material._origEI) c.material._origEI=c.material.emissiveIntensity||0;
+      c.material.emissiveIntensity=on?0.4:c.material._origEI;
+      if(on && !c.material.emissive.getHex()) c.material.emissive.setHex(0x3b82f6);
+      else if(!on) c.material.emissive.setHex(0x000000);
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PALLET INSPECTOR — click to inspect, pick to remove
+// ═══════════════════════════════════════════════════════════════
+function onCanvasClick(e) {
+  if (hideMode) return;                  // hide-mode handler already runs on window click
+  if (e.clientY < 60) return;            // ignore topbar
+  if (e.button !== 0) return;            // only left click
+  // Ignore clicks that originate inside the inspector panel
+  if (e.target.closest('#pallet-panel')) return;
+
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+
+  const hits = raycaster.intersectObjects(palletMeshes);
+  if (!hits.length) return;
+  const mesh = hits[0].object;
+  if (!mesh.userData.isPallet) return;
+
+  selectPallet(mesh);
+}
+
+function selectPallet(mesh) {
+  if (selectedPallet && selectedPallet !== mesh) deselectPallet(selectedPallet);
+  selectedPallet = mesh;
+
+  // Apply highlight: emissive orange glow
+  const mat = mesh.material;
+  if (!mat._origEmissive) mat._origEmissive = mat.emissive ? mat.emissive.getHex() : 0x000000;
+  if (mat._origEmissiveIntensity === undefined) mat._origEmissiveIntensity = mat.emissiveIntensity || 0;
+  mat.emissive.setHex(0xf25c05);
+  mat.emissiveIntensity = 0.55;
+
+  renderPalletPanel(mesh.userData.pallet);
+  document.getElementById('pallet-panel').classList.add('visible');
+}
+
+function deselectPallet(mesh) {
+  if (!mesh) return;
+  const mat = mesh.material;
+  if (!mat) return;
+  if (mat._origEmissive !== undefined) mat.emissive.setHex(mat._origEmissive);
+  if (mat._origEmissiveIntensity !== undefined) mat.emissiveIntensity = mat._origEmissiveIntensity;
+}
+
+function closePalletPanel() {
+  if (selectedPallet) { deselectPallet(selectedPallet); selectedPallet = null; }
+  const p = document.getElementById('pallet-panel');
+  if (p) p.classList.remove('visible');
+}
+
+function renderPalletPanel(pallet) {
+  const body = document.getElementById('pallet-panel-body');
+  const st = STATUS_COLORS[pallet.status];
+  if (pallet.status === 'empty') {
+    body.innerHTML = `
+      <div class="pp-id-block">
+        <div class="pp-id">${pallet.id}</div>
+        <div class="pp-sku">No pallet in this slot</div>
+        <div class="pp-status-badge ${st.cls}">${st.label}</div>
+      </div>
+      <div class="stat-row"><span class="stat-label">Rack type</span><span class="stat-value">T${pallet.typeId ?? '—'}</span></div>
+      <div class="stat-row"><span class="stat-label">Level</span><span class="stat-value">${pallet.level}</span></div>
+      <div class="stat-row"><span class="stat-label">Position</span><span class="stat-value">${pallet.position}</span></div>
+      <div class="pp-actions"><button class="btn" onclick="closePalletPanel()">Close</button></div>`;
+    return;
+  }
+  const canPick = pallet.status !== 'blocked' && !pallet._picked;
+  body.innerHTML = `
+    <div class="pp-id-block">
+      <div class="pp-id">${pallet.id}</div>
+      <div class="pp-sku">${pallet.sku}</div>
+      <div class="pp-status-badge ${st.cls}">${st.label}</div>
+    </div>
+    <div class="stat-row"><span class="stat-label">Weight</span><span class="stat-value orange">${pallet.weight} kg</span></div>
+    <div class="stat-row"><span class="stat-label">Entry date</span><span class="stat-value">${pallet.entryDate}</span></div>
+    <div class="stat-row"><span class="stat-label">Rack type</span><span class="stat-value blue">T${pallet.typeId}</span></div>
+    <div class="stat-row"><span class="stat-label">Level</span><span class="stat-value">${pallet.level}</span></div>
+    <div class="stat-row"><span class="stat-label">Position</span><span class="stat-value">${pallet.position}</span></div>
+    <div class="pp-actions">
+      <button class="btn" onclick="closePalletPanel()">Close</button>
+      <button class="btn btn-primary" onclick="pickSelectedPallet()" ${canPick ? '' : 'disabled style="opacity:.4;cursor:not-allowed"'}>${pallet._picked ? 'Picked ✓' : pallet.status === 'blocked' ? '🔒 Blocked' : '↑ Pick'}</button>
+    </div>`;
+}
+
+function pickSelectedPallet() {
+  if (!selectedPallet) return;
+  const data = selectedPallet.userData.pallet;
+  if (!data || data.status === 'blocked' || data._picked) return;
+
+  data._picked = true;
+  pickedCount++;
+  document.getElementById('s-picked').textContent = pickedCount;
+
+  // Animate the pallet rising and fading out
+  const mesh = selectedPallet;
+  const mat = mesh.material;
+  mat.transparent = true;
+  const startY = mesh.position.y;
+  const targetY = startY + 2.5;
+  const dur = 900; // ms
+  const t0 = performance.now();
+
+  function step() {
+    const t = Math.min(1, (performance.now() - t0) / dur);
+    const eased = 1 - Math.pow(1 - t, 3);
+    mesh.position.y = startY + (targetY - startY) * eased;
+    mesh.rotation.y = eased * Math.PI * 0.25;
+    mat.opacity = 1 - eased;
+    if (t < 1) requestAnimationFrame(step);
+    else {
+      mesh.visible = false;
+      // Remove from interactive set so it can't be picked again
+      const i = palletMeshes.indexOf(mesh);
+      if (i >= 0) palletMeshes.splice(i, 1);
+      if (selectedPallet === mesh) { selectedPallet = null; closePalletPanel(); }
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  HEATMAP MODE — tint pallets by status
+// ═══════════════════════════════════════════════════════════════
+function toggleHeatmap() {
+  heatmapMode = !heatmapMode;
+  document.getElementById('btn-heatmap').classList.toggle('active', heatmapMode);
+  palletMeshes.forEach(m => {
+    const data = m.userData.pallet;
+    if (!data || data.status === 'empty') return;
+    const mat = m.material;
+    if (heatmapMode) {
+      if (mat._heatBaseColor === undefined) mat._heatBaseColor = mat.color.getHex();
+      mat.color.setHex(STATUS_COLORS[data.status].hex);
+    } else if (mat._heatBaseColor !== undefined) {
+      mat.color.setHex(mat._heatBaseColor);
+    }
+  });
+}
+
+
+function initThree(){
+  const canvas=document.getElementById('three-canvas');
+  renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.setSize(window.innerWidth,window.innerHeight);
+  renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.setClearColor(0x0f1218); renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.2;
+
+  scene=new THREE.Scene(); scene.fog=new THREE.FogExp2(0x0f1218,0.005);
+  camera=new THREE.PerspectiveCamera(50,window.innerWidth/window.innerHeight,0.1,2000);
+  clock=new THREE.Clock(); raycaster=new THREE.Raycaster(); mouse=new THREE.Vector2();
+
+  const ambient=new THREE.AmbientLight(0xffffff,0.4); scene.add(ambient);
+  const sun=new THREE.DirectionalLight(0xfff5e6,1.5);
+  sun.position.set(30,50,20); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
+  sun.shadow.camera.left=sun.shadow.camera.bottom=-100; sun.shadow.camera.right=sun.shadow.camera.top=100; sun.shadow.camera.far=300; scene.add(sun);
+  const fill=new THREE.DirectionalLight(0xbdd4ff,0.6); fill.position.set(-20,10,-20); scene.add(fill);
+
+  const grid=new THREE.GridHelper(1000,200,0x1e2430,0x151a23); grid.position.y=-0.1; scene.add(grid);
+
+  initOrbit(canvas);
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
+    if (isTopDown && parsedWarehouse) { fitTopDownView(); camera.updateProjectionMatrix(); updateCam(); }
+  });
+  canvas.addEventListener('mousemove',onMouseMove);
+  canvas.addEventListener('click', onCanvasClick);
+
+  // Drag and drop events
+  document.addEventListener('dragover',e=>{e.preventDefault();document.getElementById('drop-overlay').classList.add('active');});
+  document.addEventListener('dragleave',e=>{if(!e.relatedTarget)document.getElementById('drop-overlay').classList.remove('active');});
+  document.addEventListener('drop',e=>{
+    e.preventDefault(); document.getElementById('drop-overlay').classList.remove('active');
+    document.getElementById('file-panel').classList.remove('hidden');
+    Array.from(e.dataTransfer.files).forEach(f=>{
+      const n=f.name.toLowerCase(); let slot=null;
+      if(n.includes('warehouse'))slot='warehouse'; else if(n.includes('obstacle'))slot='obstacles'; else if(n.includes('ceiling'))slot='ceiling'; else if(n.includes('type')||n.includes('bay'))slot='bays'; else if(n.includes('output')||n.includes('solution')||n.includes('result'))slot='output';
+      if(slot){const r=new FileReader();r.onload=ev=>{csvData[slot]=ev.target.result;markSlot(slot,'✓ '+f.name);};r.readAsText(f);}
+    });
+  });
+
+  (function loop(){requestAnimationFrame(loop);renderer.render(scene,camera);})();
+}
+
+function initOrbit(el){
+  let dn=false,rt=false,px=0,py=0;
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  el.addEventListener('mousedown',e=>{if(e.button===0)dn=true;if(e.button===2)rt=true;px=e.clientX;py=e.clientY;});
+  window.addEventListener('mouseup',()=>{dn=false;rt=false;});
+  window.addEventListener('mousemove',e=>{
+    if(!dn&&!rt)return;
+    const dx=e.clientX-px,dy=e.clientY-py; px=e.clientX;py=e.clientY;
+    if(dn){orbitSph.theta-=dx*0.006;orbitSph.phi=clamp(orbitSph.phi-dy*0.006,0.02,Math.PI*0.48);}
+    if(rt){const r=new THREE.Vector3();r.crossVectors(camera.getWorldDirection(new THREE.Vector3()),new THREE.Vector3(0,1,0)).normalize();camTarget.addScaledVector(r,-dx*0.05);camTarget.y+=dy*0.05;}
+    updateCam();
+  });
+  el.addEventListener('wheel', e => {
+    e.preventDefault();
+    orbitSph.radius = Math.max(1, Math.min(800, orbitSph.radius + e.deltaY * 0.08));
+    updateCam();
+  }, { passive: false });
+  el.addEventListener('contextmenu',e=>e.preventDefault());
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  CODE EDITOR PANEL
+// ═══════════════════════════════════════════════════════════════
+
+const DEFAULT_PYTHON = `"""
+=============================================================================
+WAREHOUSE OPTIMIZER  ·  HackUPC 2026 / Mecalux  ·  v5 (Beam + LS + OpenMP)
+=============================================================================
+
+ARQUITECTURA:
+  · BEAM SEARCH: mantiene top-K estados parciales en paralelo.
+    En cada paso, cada estado genera hasta BEAM_TOPK candidatos vía C.
+    Los mejores BEAM_WIDTH estados se propagan.
+  · MULTIPROCESSING: los estados del beam se evalúan en paralelo con
+    ProcessPoolExecutor — cada estado del beam en su propio proceso.
+  · OpenMP en C: full_sweep_topk, full_sweep y batch_validate corren
+    en paralelo a nivel de threads dentro del proceso (sin GIL).
+    Controla con OMP_NUM_THREADS=N.
+  · LOCAL SEARCH post-greedy: swap/remove para mejorar F.
+  · Multi-start: arranca desde varias estrategias (ratio, área, mixto).
+  · El mejor resultado global se devuelve.
+
+FUNCIÓN OBJETIVO (minimizar):
+  F = (sum_prices / sum_loads) ^ (2 - AreaUsed%)
+
+REGLAS DE GAP:
+  - gap DENTRO del almacén.
+  - footprint nuevo NO puede invadir gap de otra bay.
+  - gaps pueden solaparse entre sí.
+=============================================================================
+"""
+
+import csv
+import ctypes
+import heapq
+import math
+import os
+import sys
+import time
+import copy
+import random
+from multiprocessing import Pool, cpu_count
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CONFIG
+# ──────────────────────────────────────────────────────────────────────────────
+
+GRID_STEP    = 100          # mm grid resolution
+MAX_PER_TYPE = 200          # max bays of each type
+ROTATIONS    = [0, 90, 180, 270]
+
+BEAM_WIDTH   = 6            # number of beam states to keep per step
+BEAM_TOPK    = 12           # candidates to generate per beam state per step
+LOCAL_SEARCH_ITERS = 80     # local search iterations after beam
+TIME_LIMIT   = 25.0         # hard stop (seconds)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# C EXTENSION
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _load_lib():
+    candidates = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'warehouse_core_v3.so'),
+        os.path.join(os.getcwd(), 'warehouse_core_v3.so'),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'warehouse_core_v2.so'),
+        os.path.join(os.getcwd(), 'warehouse_core_v2.so'),
+    ]
+    for so in candidates:
+        if not os.path.exists(so):
+            continue
+        try:
+            lib = ctypes.CDLL(so)
+            D   = ctypes.c_double
+            I   = ctypes.c_int
+            PD  = ctypes.POINTER(D)
+            PI  = ctypes.POINTER(I)
+
+            # full_sweep (original)
+            lib.full_sweep.restype  = I
+            lib.full_sweep.argtypes = [
+                PD, I, PD, I, PD, I, PD, I, PD, I, PD, I, PD, I,
+                D, D, D, D, PI, PI,
+            ]
+
+            # full_sweep_topk (new)
+            if hasattr(lib, 'full_sweep_topk'):
+                lib.full_sweep_topk.restype  = I
+                lib.full_sweep_topk.argtypes = [
+                    PD, I, PD, I, PD, I, PD, I, PD, I, PD, I, PD, I,
+                    D, D, D, D, I, PI,
+                ]
+                lib._has_topk = True
+            else:
+                lib._has_topk = False
+
+            # validate_single (new)
+            if hasattr(lib, 'validate_single'):
+                lib.validate_single.restype  = I
+                lib.validate_single.argtypes = [
+                    D, D, D, D, D, D, I,
+                    PD, I, PD, I, PD, I, PD, I, PD, I,
+                ]
+                lib._has_vs = True
+            else:
+                lib._has_vs = False
+
+            print(f"[C ext] Loaded: {so}  topk={lib._has_topk}  vs={lib._has_vs}")
+            return lib
+        except Exception as e:
+            print(f"[C ext] Error loading {so}: {e}")
+    print("[C ext] No .so found — pure Python fallback.")
+    return None
+
+
+_lib = _load_lib()
+
+
+def _darr(*values):
+    n = len(values)
+    if n == 0:
+        arr = (ctypes.c_double * 1)(0.0)
+    else:
+        arr = (ctypes.c_double * n)(*values)
+    return arr
+
+def _iarr(*values):
+    n = len(values)
+    arr = (ctypes.c_int * max(n,1))(*values)
+    return arr
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PURE PYTHON GEOMETRY
+# ──────────────────────────────────────────────────────────────────────────────
+
+def polygon_area(v):
+    n, a = len(v), 0.0
+    for i in range(n):
+        j = (i+1) % n
+        a += v[i][0]*v[j][1] - v[j][0]*v[i][1]
+    return abs(a)/2.0
+
+
+def _pip(px, py, v):
+    inside, j, n = False, len(v)-1, len(v)
+    for i in range(n):
+        xi,yi=v[i]; xj,yj=v[j]
+        if ((yi>py)!=(yj>py)) and (px<(xj-xi)*(py-yi)/(yj-yi)+xi):
+            inside=not inside
+        j=i
+    return inside
+
+
+def _on_boundary(px, py, v, eps=1e-6):
+    n=len(v)
+    for i in range(n):
+        j=(i+1)%n
+        x1,y1=v[i]; x2,y2=v[j]
+        if abs((x2-x1)*(py-y1)-(y2-y1)*(px-x1))<eps:
+            if min(x1,x2)-eps<=px<=max(x1,x2)+eps and min(y1,y2)-eps<=py<=max(y1,y2)+eps:
+                return True
+    return False
+
+
+def _rect_in_poly(rx0,ry0,rx1,ry1,v):
+    for cx,cy in [(rx0,ry0),(rx1,ry0),(rx1,ry1),(rx0,ry1)]:
+        if not (_on_boundary(cx,cy,v) or _pip(cx,cy,v)):
+            return False
+    for vx,vy in v:
+        if rx0<vx<rx1 and ry0<vy<ry1:
+            return False
+    return True
+
+
+def _overlap(ax0,ay0,ax1,ay1,bx0,by0,bx1,by1):
+    return ax0<bx1 and ax1>bx0 and ay0<by1 and ay1>by0
+
+
+def _ceil_h(x0,x1,segs):
+    mh=float('inf')
+    for i,(ss,sh) in enumerate(segs):
+        se=segs[i+1][0] if i+1<len(segs) else float('inf')
+        if se<=x0: continue
+        if ss>=x1: break
+        mh=min(mh,sh)
+    return mh
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PARSEO
+# ──────────────────────────────────────────────────────────────────────────────
+
+def parse_warehouse(fp):
+    v=[]
+    with open(fp,newline='') as f:
+        for row in csv.reader(f):
+            row=[r.strip() for r in row if r.strip()]
+            if len(row)>=2: v.append((float(row[0]),float(row[1])))
+    if len(v)<3: raise ValueError("≥3 vértices requeridos")
+    area=polygon_area(v)
+    print(f"[Warehouse] {len(v)} vértices, área={area/1e6:.2f} m²")
+    return v, area
+
+
+def parse_obstacles(fp):
+    obs=[]
+    try:
+        with open(fp) as f:
+            for line in f.read().strip().replace('=','\\n').split('\\n'):
+                p=[x.strip() for x in line.split(',') if x.strip()]
+                if len(p)>=4:
+                    x,y,w,d=map(float,p[:4])
+                    obs.append((x,y,x+w,y+d))
+    except FileNotFoundError: pass
+    print(f"[Obstacles] {len(obs)}")
+    return obs
+
+
+def parse_ceiling(fp):
+    s=[]
+    with open(fp,newline='') as f:
+        for row in csv.reader(f):
+            row=[r.strip() for r in row if r.strip()]
+            if len(row)>=2: s.append((float(row[0]),float(row[1])))
+    s.sort()
+    print(f"[Ceiling] {s}")
+    return s
+
+
+def parse_bays(fp):
+    bays=[]
+    with open(fp,newline='') as f:
+        for row in csv.reader(f):
+            row=[r.strip() for r in row if r.strip()]
+            if len(row)>=7:
+                nl,pr=float(row[5]),float(row[6])
+                bays.append({
+                    'id':int(row[0]),'width':float(row[1]),'depth':float(row[2]),
+                    'height':float(row[3]),'gap':float(row[4]),
+                    'nloads':nl,'price':pr,
+                    'ratio':pr/nl if nl>0 else float('inf'),
+                    'area':float(row[1])*float(row[2]),
+                })
+    print(f"[Bays] {len(bays)} tipos")
+    return bays
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# BAY GEOMETRY
+# ──────────────────────────────────────────────────────────────────────────────
+
+def bay_rects(bay, px, py, rot):
+    w,d,g = bay['width'],bay['depth'],bay['gap']
+    if rot==0:   return (px,py,px+w,py+d),(px,py+d,px+w,py+d+g),'N'
+    if rot==90:  return (px,py,px+d,py+w),(px-g,py,px,py+w),     'W'
+    if rot==180: return (px,py,px+w,py+d),(px,py-g,px+w,py),     'S'
+    return              (px,py,px+d,py+w),(px+d,py,px+d+g,py+w), 'E'
+
+
+def footprint_dims(bay, rot):
+    return (bay['width'],bay['depth']) if rot%180==0 else (bay['depth'],bay['width'])
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# GRID + CANDIDATE GENERATION
+# ──────────────────────────────────────────────────────────────────────────────
+
+def build_grid(vertices, step):
+    xs=[v[0] for v in vertices]; ys=[v[1] for v in vertices]
+    xmin=int(math.floor(min(xs)/step)*step)
+    xmax=int(math.ceil(max(xs)/step)*step)
+    ymin=int(math.floor(min(ys)/step)*step)
+    ymax=int(math.ceil(max(ys)/step)*step)
+    half=step/2.0
+    pts=[]
+    for x in range(xmin,xmax,step):
+        for y in range(ymin,ymax,step):
+            if _pip(x+half,y+half,vertices):
+                pts.append((float(x),float(y)))
+    # Sort BL first
+    pts.sort(key=lambda p:(p[1],p[0]))
+    print(f"[Grid] {len(pts)} puntos (step={step}mm)")
+    return pts
+
+
+def btb_candidates(placed_list, snap):
+    """Back-to-back pattern candidates."""
+    extra = []
+    for p in placed_list:
+        br=p['rect']; gr=p['gap_rect']; rot=p['rotation']
+        bx0,by0,bx1,by1=br
+        gx0,gy0,gx1,gy1=gr
+        if rot==0:
+            for dx in (-snap, 0, snap):
+                extra.append((round((bx0+dx)/snap)*snap, float(gy1)))
+        elif rot==180:
+            for dx in (-snap, 0, snap):
+                for delta_d in (800,1000,1200,1600,2400):
+                    extra.append((round((bx0+dx)/snap)*snap,
+                                  round((gy0-delta_d)/snap)*snap))
+        elif rot==90:
+            for dy in (-snap, 0, snap):
+                for delta_d in (800,1000,1200,1600,2400):
+                    extra.append((round((gx0-delta_d)/snap)*snap,
+                                  round((by0+dy)/snap)*snap))
+        elif rot==270:
+            for dy in (-snap, 0, snap):
+                extra.append((float(gx1), round((by0+dy)/snap)*snap))
+    return list(dict.fromkeys(extra))
+
+
+def edge_candidates(placed_list, snap):
+    """
+    Generate candidates snapped right next to each placed bay
+    (left/right/top/bottom touching edges). Helps dense packing.
+    """
+    extra = []
+    for p in placed_list:
+        bx0,by0,bx1,by1 = p['rect']
+        for dx in (-snap, 0, snap):
+            extra.append((round((bx1+dx)/snap)*snap, round(by0/snap)*snap))
+            extra.append((round((bx0-snap+dx)/snap)*snap, round(by0/snap)*snap))
+        for dy in (-snap, 0, snap):
+            extra.append((round(bx0/snap)*snap, round((by1+dy)/snap)*snap))
+            extra.append((round(bx0/snap)*snap, round((by0-snap+dy)/snap)*snap))
+    return list(dict.fromkeys(extra))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# OBJECTIVE
+# ──────────────────────────────────────────────────────────────────────────────
+
+def objective(sp, sl, oa, ta):
+    if sl<=0 or sp<=0: return float('inf')
+    return (sp/sl)**(2.0-oa/ta)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# STATE — encapsulates a partial solution
+# ──────────────────────────────────────────────────────────────────────────────
+
+class State:
+    __slots__ = ('placed_list','placed_rects','placed_gaps',
+                 'sum_p','sum_l','occ_area','counts','f')
+
+    def __init__(self, bay_types, total_area):
+        self.placed_list  = []
+        self.placed_rects = []
+        self.placed_gaps  = []
+        self.sum_p = 0.0
+        self.sum_l = 0.0
+        self.occ_area = 0.0
+        self.counts = {b['id']:0 for b in bay_types}
+        self.f = float('inf')
+
+    def clone(self):
+        s = object.__new__(State)
+        s.placed_list  = list(self.placed_list)
+        s.placed_rects = list(self.placed_rects)
+        s.placed_gaps  = list(self.placed_gaps)
+        s.sum_p    = self.sum_p
+        s.sum_l    = self.sum_l
+        s.occ_area = self.occ_area
+        s.counts   = dict(self.counts)
+        s.f        = self.f
+        return s
+
+    def commit(self, bay, px, py, rot, total_area):
+        br, gr, fr = bay_rects(bay, px, py, rot)
+        ew, ed = footprint_dims(bay, rot)
+        self.placed_list.append({
+            'bay':bay,'x':px,'y':py,'rotation':rot,'front':fr,
+            'rect':br,'gap_rect':gr,
+        })
+        self.placed_rects.append(br)
+        self.placed_gaps.append(gr)
+        self.sum_p    += bay['price']
+        self.sum_l    += bay['nloads']
+        self.occ_area += ew*ed
+        self.counts[bay['id']] += 1
+        self.f = objective(self.sum_p, self.sum_l, self.occ_area, total_area)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# C CALL HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _make_combos(bay_types, counts):
+    """Build sorted combos flat array. Returns (combos_flat, combo_meta)."""
+    pq = []
+    for b in bay_types:
+        if counts[b['id']] < MAX_PER_TYPE:
+            heapq.heappush(pq, (b['ratio'], b['id'], b))
+    combos_flat = []
+    combo_meta  = []
+    while pq:
+        _, _, b = heapq.heappop(pq)
+        for rot in ROTATIONS:
+            combos_flat += [b['width'], b['depth'], b['height'],
+                            b['gap'], b['price'], b['nloads'], float(rot)]
+            combo_meta.append((b, rot))
+    return combos_flat, combo_meta
+
+
+def sweep_topk(state, all_cands, bay_types, verts_flat, obs_flat, ceil_flat,
+               total_area, topk):
+    """
+    Call full_sweep_topk (or fallback to full_sweep).
+    Returns list of (bay, rot, px, py, f_val) — up to topk results.
+    """
+    combos_flat, combo_meta = _make_combos(bay_types, state.counts)
+    if not combos_flat:
+        return []
+
+    n_combos = len(combo_meta)
+    cands_flat = [c for pt in all_cands for c in pt]
+    n_cands = len(all_cands)
+    pr_flat = [c for r in state.placed_rects for c in r]
+    pg_flat = [c for g in state.placed_gaps  for c in g]
+
+    combos_a = _darr(*combos_flat)
+    cands_a  = _darr(*cands_flat)
+    verts_a  = _darr(*verts_flat)
+    obs_a    = _darr(*obs_flat)   if obs_flat  else _darr(0.0)
+    ceil_a   = _darr(*ceil_flat)
+    pr_a     = _darr(*pr_flat)    if pr_flat   else _darr(0.0)
+    pg_a     = _darr(*pg_flat)    if pg_flat   else _darr(0.0)
+
+    results = []
+
+    if _lib is not None and _lib._has_topk:
+        out_arr = (ctypes.c_int * (2 * topk))()
+        found = _lib.full_sweep_topk(
+            combos_a, n_combos,
+            cands_a,  n_cands,
+            verts_a,  len(verts_flat)//2,
+            obs_a,    len(obs_flat)//4  if obs_flat  else 0,
+            ceil_a,   len(ceil_flat)//2,
+            pr_a,     len(pr_flat)//4   if pr_flat   else 0,
+            pg_a,     len(pg_flat)//4   if pg_flat   else 0,
+            ctypes.c_double(state.sum_p),
+            ctypes.c_double(state.sum_l),
+            ctypes.c_double(state.occ_area),
+            ctypes.c_double(total_area),
+            ctypes.c_int(topk),
+            out_arr,
+        )
+        for i in range(found):
+            ci = out_arr[2*i]
+            pi = out_arr[2*i+1]
+            bay, rot = combo_meta[ci]
+            px, py   = all_cands[pi]
+            ew, ed   = footprint_dims(bay, rot)
+            f_val    = objective(state.sum_p+bay['price'],
+                                 state.sum_l+bay['nloads'],
+                                 state.occ_area+ew*ed, total_area)
+            results.append((f_val, bay, rot, px, py))
+
+    elif _lib is not None:
+        # Fallback: call full_sweep once
+        out_c = ctypes.c_int(-1)
+        out_p = ctypes.c_int(-1)
+        _lib.full_sweep(
+            combos_a, n_combos, cands_a, n_cands,
+            verts_a, len(verts_flat)//2,
+            obs_a,   len(obs_flat)//4  if obs_flat  else 0,
+            ceil_a,  len(ceil_flat)//2,
+            pr_a,    len(pr_flat)//4   if pr_flat   else 0,
+            pg_a,    len(pg_flat)//4   if pg_flat   else 0,
+            ctypes.c_double(state.sum_p),
+            ctypes.c_double(state.sum_l),
+            ctypes.c_double(state.occ_area),
+            ctypes.c_double(total_area),
+            ctypes.byref(out_c), ctypes.byref(out_p),
+        )
+        if out_c.value >= 0:
+            bay, rot = combo_meta[out_c.value]
+            px, py   = all_cands[out_p.value]
+            ew, ed   = footprint_dims(bay, rot)
+            f_val    = objective(state.sum_p+bay['price'],
+                                 state.sum_l+bay['nloads'],
+                                 state.occ_area+ew*ed, total_area)
+            results.append((f_val, bay, rot, px, py))
+
+    return results
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# LOCAL SEARCH
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _rebuild_state(placed_list, bay_types, total_area):
+    """Rebuild a State from a list of placements."""
+    s = State(bay_types, total_area)
+    for p in placed_list:
+        s.commit(p['bay'], p['x'], p['y'], p['rotation'], total_area)
+    return s
+
+
+def _validate_placement(bay, px, py, rot,
+                         verts, obs, ceil_segs,
+                         prects, pgaps):
+    """Pure-Python validation of a single placement."""
+    br,gr,fr = bay_rects(bay,px,py,rot)
+    bx0,by0,bx1,by1=br; gx0,gy0,gx1,gy1=gr
+    if not _rect_in_poly(bx0,by0,bx1,by1,verts): return False
+    if not _rect_in_poly(gx0,gy0,gx1,gy1,verts): return False
+    if _ceil_h(bx0,bx1,ceil_segs)<bay['height']+bay['gap']: return False
+    for ox0,oy0,ox1,oy1 in obs:
+        if _overlap(bx0,by0,bx1,by1,ox0,oy0,ox1,oy1): return False
+        if _overlap(gx0,gy0,gx1,gy1,ox0,oy0,ox1,oy1): return False
+    for rx0,ry0,rx1,ry1 in prects:
+        if _overlap(bx0,by0,bx1,by1,rx0,ry0,rx1,ry1): return False
+        if _overlap(gx0,gy0,gx1,gy1,rx0,ry0,rx1,ry1): return False
+    for gx0_,gy0_,gx1_,gy1_ in pgaps:
+        if _overlap(bx0,by0,bx1,by1,gx0_,gy0_,gx1_,gy1_): return False
+    return True
+
+
+def local_search(state, bay_types, grid_pts,
+                 warehouse_vertices, obstacle_list, ceiling_segments,
+                 total_area, t_start, time_limit):
+    """
+    Improve state via:
+      1. Remove-then-fill: remove one bad bay, try to fill freed space.
+      2. Swap: replace bay type at position.
+      3. Add-more: try to squeeze in more bays after current placement.
+    """
+    verts = warehouse_vertices
+    obs   = obstacle_list
+    ceil  = ceiling_segments
+
+    best_f = state.f
+    best_placed = list(state.placed_list)
+    n_bays = len(best_placed)
+
+    iters = 0
+    while iters < LOCAL_SEARCH_ITERS and (time.time()-t_start) < time_limit:
+        iters += 1
+        if not best_placed:
+            break
+
+        move = random.randint(0, 2)
+
+        if move == 0:
+            # ── Remove worst-ratio bay ──────────────────────────────────────
+            # Bay whose removal most improves current ratio
+            if len(best_placed) < 2:
+                continue
+            # Score each bay: if removed, what's the new ratio?
+            sp = sum(p['bay']['price']  for p in best_placed)
+            sl = sum(p['bay']['nloads'] for p in best_placed)
+            oa = sum((p['rect'][2]-p['rect'][0])*(p['rect'][3]-p['rect'][1])
+                     for p in best_placed)
+            best_remove_gain = 0.0
+            best_remove_idx  = -1
+            for i, p in enumerate(best_placed):
+                bp = p['bay']['price']; bl = p['bay']['nloads']
+                bw = p['rect'][2]-p['rect'][0]; bd2 = p['rect'][3]-p['rect'][1]
+                new_sp = sp - bp; new_sl = sl - bl; new_oa = oa - bw*bd2
+                if new_sl <= 0 or new_sp <= 0: continue
+                new_f = objective(new_sp, new_sl, new_oa, total_area)
+                gain = best_f - new_f
+                if gain > best_remove_gain:
+                    best_remove_gain = gain
+                    best_remove_idx  = i
+
+            if best_remove_idx < 0:
+                continue
+
+            new_placed = [p for i,p in enumerate(best_placed) if i != best_remove_idx]
+            new_state = _rebuild_state(new_placed, bay_types, total_area)
+            if new_state.f < best_f:
+                best_f = new_state.f
+                best_placed = new_placed
+                print(f"  [LS remove] F={best_f:.5f}  bays={len(best_placed)}")
+
+        elif move == 1:
+            # ── Swap bay type at random position ───────────────────────────
+            if not best_placed:
+                continue
+            idx = random.randint(0, len(best_placed)-1)
+            p   = best_placed[idx]
+            px, py, rot = p['x'], p['y'], p['rotation']
+
+            # Build state without this bay
+            other = [pp for i,pp in enumerate(best_placed) if i != idx]
+            s_tmp = _rebuild_state(other, bay_types, total_area)
+            prects = list(s_tmp.placed_rects)
+            pgaps  = list(s_tmp.placed_gaps)
+
+            improved = False
+            for b in sorted(bay_types, key=lambda x:x['ratio']):
+                if s_tmp.counts[b['id']] >= MAX_PER_TYPE:
+                    continue
+                for r in ROTATIONS:
+                    if not _validate_placement(b, px, py, r, verts, obs, ceil,
+                                               prects, pgaps):
+                        continue
+                    s2 = s_tmp.clone()
+                    s2.commit(b, px, py, r, total_area)
+                    if s2.f < best_f:
+                        best_f = s2.f
+                        best_placed = list(s2.placed_list)
+                        improved = True
+                        print(f"  [LS swap] F={best_f:.5f}  bays={len(best_placed)}")
+                        break
+                if improved:
+                    break
+
+        else:
+            # ── Try adding one more bay greedily ────────────────────────────
+            s_tmp = _rebuild_state(best_placed, bay_types, total_area)
+            btb   = btb_candidates(best_placed, GRID_STEP)
+            edge  = edge_candidates(best_placed, GRID_STEP)
+            grid_set = set(grid_pts)
+            extra = [p for p in btb+edge if p not in grid_set]
+            cands = grid_pts + extra
+
+            verts_flat = [c for pt in verts for c in pt]
+            obs_flat   = [c for o  in obs   for c in o ]
+            ceil_flat  = [c for s  in ceil  for c in s ]
+
+            top = sweep_topk(s_tmp, cands, bay_types,
+                             verts_flat, obs_flat, ceil_flat,
+                             total_area, 1)
+            if top:
+                f_val, bay, rot, ppx, ppy = top[0]
+                if f_val < best_f:
+                    s_tmp.commit(bay, ppx, ppy, rot, total_area)
+                    best_f = s_tmp.f
+                    best_placed = list(s_tmp.placed_list)
+                    print(f"  [LS add] F={best_f:.5f}  bays={len(best_placed)}")
+
+    return _rebuild_state(best_placed, bay_types, total_area)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# BEAM SEARCH
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _expand_beam_state(args):
+    """
+    Worker: expande UN estado del beam y devuelve la lista de (f, placed_list).
+    Se ejecuta en un proceso separado → sin GIL, OpenMP activo dentro del .so.
+    """
+    (placed_list, bay_types_list, total_area, grid_pts,
+     verts_flat, obs_flat, ceil_flat, sorted_bays, topk) = args
+
+    # Reconstruir el state en el proceso worker
+    state = _rebuild_state(placed_list, bay_types_list, total_area)
+
+    btb      = btb_candidates(state.placed_list, GRID_STEP)
+    edge     = edge_candidates(state.placed_list, GRID_STEP)
+    grid_set = set(grid_pts)
+    extra    = [p for p in btb + edge if p not in grid_set]
+    all_cands = grid_pts + extra
+
+    results = sweep_topk(state, all_cands, sorted_bays,
+                         verts_flat, obs_flat, ceil_flat, total_area, topk)
+
+    if not results:
+        # Estado agotado — devolver tal cual
+        return [(state.f, state.placed_list)]
+
+    expansions = []
+    for f_val, bay, rot, px, py in results:
+        ns = state.clone()
+        ns.commit(bay, px, py, rot, total_area)
+        expansions.append((ns.f, ns.placed_list))
+
+    return expansions
+
+
+def beam_search(warehouse_vertices, total_area, obstacle_list,
+                ceiling_segments, bay_types, grid_pts,
+                t_start, time_limit,
+                beam_width=BEAM_WIDTH, topk=BEAM_TOPK,
+                sort_strategy='ratio'):
+    """
+    Beam search: maintain beam_width states.
+    PARALELO: cada estado del beam se expande en su propio proceso
+    (ProcessPoolExecutor). Dentro de cada proceso, OpenMP paraleliza
+    el C-sweep a nivel de threads. Doble paralelismo: procesos × threads.
+    """
+    verts_flat = [c for pt in warehouse_vertices for c in pt]
+    obs_flat   = [c for o  in obstacle_list      for c in o ]
+    ceil_flat  = [c for s  in ceiling_segments   for c in s ]
+
+    # Sort bay types according to strategy
+    if sort_strategy == 'ratio':
+        sorted_bays = sorted(bay_types, key=lambda b: b['ratio'])
+    elif sort_strategy == 'area':
+        sorted_bays = sorted(bay_types, key=lambda b: -b['area'])
+    elif sort_strategy == 'mixed':
+        sorted_bays = sorted(bay_types, key=lambda b: b['ratio'] / b['area'])
+    else:
+        sorted_bays = list(bay_types)
+
+    # Cuántos procesos en el pool del beam (independiente del pool multi-strategy)
+    # Usamos min(beam_width, cpus//2) para no saturar si hay varias estrategias
+    beam_workers = max(1, min(beam_width, cpu_count() // 2))
+
+    # Initial beam: one empty state
+    beam = [State(bay_types, total_area)]
+
+    iteration = 0
+    while (time.time() - t_start) < time_limit:
+        iteration += 1
+        next_states = []
+
+        if beam_workers > 1 and len(beam) > 1:
+            # ── Expansión paralela de estados del beam ───────────────────────
+            task_args = [
+                (s.placed_list, bay_types, total_area, grid_pts,
+                 verts_flat, obs_flat, ceil_flat, sorted_bays, topk)
+                for s in beam
+            ]
+            try:
+                with ProcessPoolExecutor(max_workers=beam_workers) as ex:
+                    for expansions in ex.map(_expand_beam_state, task_args,
+                                             chunksize=1):
+                        for f_val, placed in expansions:
+                            s = _rebuild_state(placed, bay_types, total_area)
+                            next_states.append((s.f, s))
+            except Exception as e:
+                # Fallback secuencial si ProcessPoolExecutor falla
+                print(f"  [Beam parallel] fallback: {e}", flush=True)
+                for state in beam:
+                    for expansions in [_expand_beam_state((
+                        state.placed_list, bay_types, total_area, grid_pts,
+                        verts_flat, obs_flat, ceil_flat, sorted_bays, topk))]:
+                        for f_val, placed in expansions:
+                            s = _rebuild_state(placed, bay_types, total_area)
+                            next_states.append((s.f, s))
+        else:
+            # ── Expansión secuencial (beam pequeño o un solo core) ───────────
+            for state in beam:
+                btb   = btb_candidates(state.placed_list, GRID_STEP)
+                edge  = edge_candidates(state.placed_list, GRID_STEP)
+                grid_set = set(grid_pts)
+                extra = [p for p in btb + edge if p not in grid_set]
+                all_cands = grid_pts + extra
+
+                results = sweep_topk(state, all_cands, sorted_bays,
+                                     verts_flat, obs_flat, ceil_flat,
+                                     total_area, topk)
+
+                if not results:
+                    next_states.append((state.f, state))
+                    continue
+
+                for f_val, bay, rot, px, py in results:
+                    ns = state.clone()
+                    ns.commit(bay, px, py, rot, total_area)
+                    next_states.append((ns.f, ns))
+
+        if not next_states:
+            break
+
+        # Keep best beam_width states (by F)
+        next_states.sort(key=lambda x: x[0])
+        beam = [s for f, s in next_states[:beam_width]]
+
+        best_f   = beam[0].f
+        n_placed = len(beam[0].placed_list)
+        pct      = 100 * beam[0].occ_area / total_area if total_area else 0
+        print(f"  [Beam iter {iteration}] best_F={best_f:.4f}  "
+              f"bays={n_placed}  area={pct:.1f}%  "
+              f"beam_size={len(beam)}  workers={beam_workers}", flush=True)
+
+        # Early exit if no state improved
+        all_exhausted = all(
+            not sweep_topk(s, grid_pts, sorted_bays,
+                           verts_flat, obs_flat, ceil_flat, total_area, 1)
+            for s in beam[:1]
+        )
+        if all_exhausted:
+            break
+
+    return beam[0]  # best state
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MULTI-START RUNNER (for parallel execution)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _run_strategy(args):
+    """Worker function for multiprocessing."""
+    (warehouse_vertices, total_area, obstacle_list,
+     ceiling_segments, bay_types, grid_pts,
+     t_start, time_limit, strategy, beam_width, topk) = args
+
+    print(f"\\n[Strategy: {strategy}] starting...", flush=True)
+    state = beam_search(
+        warehouse_vertices, total_area, obstacle_list,
+        ceiling_segments, bay_types, grid_pts,
+        t_start, time_limit * 0.6,  # leave time for local search
+        beam_width=beam_width, topk=topk,
+        sort_strategy=strategy,
+    )
+
+    remaining = time_limit - (time.time() - t_start)
+    if remaining > 1.0:
+        print(f"  [{strategy}] beam done F={state.f:.4f}, running local search...",
+              flush=True)
+        state = local_search(
+            state, bay_types, grid_pts,
+            warehouse_vertices, obstacle_list, ceiling_segments,
+            total_area, t_start, time_limit * 0.9,
+        )
+
+    print(f"  [{strategy}] final F={state.f:.4f}  bays={len(state.placed_list)}",
+          flush=True)
+    return state.placed_list, state.f
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MAIN SOLVER
+# ──────────────────────────────────────────────────────────────────────────────
+
+def place_bays(warehouse_vertices, total_area, obstacle_list,
+               ceiling_segments, bay_types):
+
+    t_start = time.time()
+    grid_pts = build_grid(warehouse_vertices, GRID_STEP)
+
+    # Strategies to try in parallel
+    strategies = ['ratio', 'area', 'mixed', 'ratio']
+    beam_configs = [
+        (BEAM_WIDTH, BEAM_TOPK),
+        (4, 8),
+        (3, 6),
+        (BEAM_WIDTH*2, BEAM_TOPK//2),
+    ]
+
+    # Cap to available CPUs
+    n_workers = min(len(strategies), max(1, cpu_count()))
+    print(f"\\n[Parallel] {n_workers} workers / {len(strategies)} strategies")
+
+    time_per_worker = TIME_LIMIT * 0.85  # give workers 85% of limit
+
+    task_args = [
+        (warehouse_vertices, total_area, obstacle_list,
+         ceiling_segments, bay_types, grid_pts,
+         t_start, time_per_worker,
+         strategies[i], beam_configs[i][0], beam_configs[i][1])
+        for i in range(len(strategies))
+    ]
+
+    best_placed = []
+    best_f = float('inf')
+
+    if n_workers > 1:
+        try:
+            with Pool(processes=n_workers) as pool:
+                results = pool.map(_run_strategy, task_args,
+                                   chunksize=1)
+            for placed, f in results:
+                if f < best_f:
+                    best_f = f
+                    best_placed = placed
+        except Exception as e:
+            print(f"[Parallel] error: {e}, falling back to sequential")
+            for args in task_args:
+                if (time.time()-t_start) > TIME_LIMIT*0.9:
+                    break
+                placed, f = _run_strategy(args)
+                if f < best_f:
+                    best_f = f
+                    best_placed = placed
+    else:
+        for args in task_args:
+            if (time.time()-t_start) > TIME_LIMIT*0.9:
+                break
+            placed, f = _run_strategy(args)
+            if f < best_f:
+                best_f = f
+                best_placed = placed
+
+    # Final local search on best result with remaining time
+    remaining = TIME_LIMIT - (time.time() - t_start)
+    if remaining > 2.0 and best_placed:
+        print(f"\\n[Final LS] F={best_f:.5f}  remaining={remaining:.1f}s")
+        best_state = _rebuild_state(best_placed, bay_types, total_area)
+        best_state = local_search(
+            best_state, bay_types, grid_pts,
+            warehouse_vertices, obstacle_list, ceiling_segments,
+            total_area, t_start, TIME_LIMIT - 0.5,
+        )
+        best_placed = best_state.placed_list
+        best_f = best_state.f
+
+    print(f"\\n[BEST] F={best_f:.6f}  bays={len(best_placed)}")
+    return best_placed
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# OUTPUT
+# ──────────────────────────────────────────────────────────────────────────────
+
+def write_output(placed, fp='output.csv'):
+    with open(fp,'w',newline='') as f:
+        w=csv.writer(f)
+        w.writerow(['Id','X','Y','Rotation'])
+        for p in placed:
+            w.writerow([p['bay']['id'],int(p['x']),int(p['y']),p['rotation']])
+    print(f"[Output] {fp}  ({len(placed)} bays)")
+
+
+def print_report(placed, total_area):
+    if not placed: print("Sin bays."); return
+    sp=sum(p['bay']['price']  for p in placed)
+    sl=sum(p['bay']['nloads'] for p in placed)
+    oa=sum((p['rect'][2]-p['rect'][0])*(p['rect'][3]-p['rect'][1]) for p in placed)
+    pct=oa/total_area
+    f=objective(sp,sl,oa,total_area)
+    print("\\n"+"="*66)
+    print(f"  Bays:{len(placed)}  Price:{sp:.0f}  Loads:{sl:.0f}  "
+          f"Ratio:{sp/sl:.3f}")
+    print(f"  Area:{oa:.0f}/{total_area:.0f} mm² ({pct*100:.2f}%)  "
+          f"Exp:{2-pct:.4f}")
+    print(f"  ★ F = {f:.6f}")
+    print("="*66)
+    print(f"  {'#':>3} {'id':>3} {'X':>7} {'Y':>7} {'rot':>5} {'fr':>3}  gap_rect")
+    for i,p in enumerate(placed):
+        g=p['gap_rect']
+        print(f"  {i:3d} {p['bay']['id']:3d} {p['x']:7.0f} {p['y']:7.0f} "
+              f"{p['rotation']:4d}° {p['front']:>3}  "
+              f"({g[0]:.0f},{g[1]:.0f})→({g[2]:.0f},{g[3]:.0f})")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MAIN
+# ──────────────────────────────────────────────────────────────────────────────
+
+def main():
+    args=sys.argv[1:]
+    wf = args[0] if len(args)>0 else 'warehouse.csv'
+    of = args[1] if len(args)>1 else 'obstacles.csv'
+    cf = args[2] if len(args)>2 else 'ceiling.csv'
+    bf = args[3] if len(args)>3 else 'types_of_bays.csv'
+    out= args[4] if len(args)>4 else 'output.csv'
+
+    print("="*66)
+    print(f"WAREHOUSE OPTIMIZER  ·  HackUPC 2026  ·  v5 (Beam+LS+OpenMP)")
+    print(f"  grid={GRID_STEP}mm  beam={BEAM_WIDTH}  topk={BEAM_TOPK}  "
+          f"ls_iters={LOCAL_SEARCH_ITERS}  time_limit={TIME_LIMIT}s")
+    print("="*66)
+
+    verts, area = parse_warehouse(wf)
+    obs         = parse_obstacles(of)
+    ceil        = parse_ceiling(cf)
+    bays        = parse_bays(bf)
+
+    t0 = time.time()
+    placed = place_bays(verts, area, obs, ceil, bays)
+    elapsed = time.time()-t0
+
+    print_report(placed, area)
+    write_output(placed, out)
+    print(f"\\n[Tiempo] {elapsed:.2f}s")
+
+
+if __name__ == '__main__':
+    main()
+`;
+
+const DEFAULT_SH = `#!/bin/bash
+# build_v3.sh — Compila warehouse_core_v3.so con -O2 + OpenMP
+# Ejecutar antes de usar warehouse_optimizer_v5.py
+
+set -e
+
+echo "Compilando warehouse_core_v3.so con OpenMP..."
+
+gcc -O2 -march=native -ffast-math -fopenmp \\
+    -shared -fPIC \\
+    -o warehouse_core_v3.so \\
+    warehouse_core_v3.c \\
+    -lm
+
+if [ $? -eq 0 ]; then
+    echo "✓ warehouse_core_v3.so compilado correctamente"
+    ls -lh warehouse_core_v3.so
+    echo ""
+    echo "Para controlar el número de threads:"
+    echo "  export OMP_NUM_THREADS=8   # usa 8 threads"
+    echo "  python warehouse_optimizer_v5.py ..."
+else
+    echo "✗ Error de compilación"
+    exit 1
+fi
+`;
+const DEFAULT_C = `/*
+ * warehouse_core_v3.c  –  Hot-path geometry compiled with -O2 + OpenMP
+ *
+ * CAMBIOS vs v2:
+ *   - full_sweep_topk   → paralelo por combos (omp parallel for + merge thread-local)
+ *   - full_sweep        → paralelo con reducción de best_f
+ *   - precompute_bitmap → omp parallel for collapse(2)
+ *   - batch_validate    → omp parallel for (cada índice es independiente)
+ *   - Todos los helpers de geometría son read-only → thread-safe sin cambios
+ *
+ * COMPILAR:
+ *   gcc -O2 -march=native -ffast-math -fopenmp \\
+ *       -shared -fPIC -o warehouse_core_v3.so warehouse_core_v3.c -lm
+ *
+ * THREADS: controla con OMP_NUM_THREADS=N antes de lanzar Python.
+ *          Por defecto usa todos los cores lógicos disponibles.
+ */
+
+#include <stdint.h>
+#include <stdlib.h>
+#include <math.h>
+#include <string.h>
+#include <omp.h>
+
+/* ── point_in_polygon (ray casting) ─────────────────────────────────────── */
+/* Completamente read-only → thread-safe */
+int point_in_polygon(double px, double py, const double *verts, int n) {
+    int inside = 0;
+    int j = n - 1;
+    for (int i = 0; i < n; i++) {
+        double xi = verts[2*i], yi = verts[2*i+1];
+        double xj = verts[2*j], yj = verts[2*j+1];
+        if (((yi > py) != (yj > py)) &&
+            (px < (xj - xi) * (py - yi) / (yj - yi) + xi))
+            inside = !inside;
+        j = i;
+    }
+    return inside;
+}
+
+static int point_on_boundary(double px, double py, const double *verts, int n) {
+    const double EPS = 1e-6;
+    for (int i = 0; i < n; i++) {
+        int j = (i + 1) % n;
+        double x1=verts[2*i], y1=verts[2*i+1];
+        double x2=verts[2*j], y2=verts[2*j+1];
+        double cross = (x2-x1)*(py-y1) - (y2-y1)*(px-x1);
+        if (fabs(cross) < EPS) {
+            double xlo = x1<x2?x1:x2, xhi = x1>x2?x1:x2;
+            double ylo = y1<y2?y1:y2, yhi = y1>y2?y1:y2;
+            if (px >= xlo-EPS && px <= xhi+EPS && py >= ylo-EPS && py <= yhi+EPS)
+                return 1;
+        }
+    }
+    return 0;
+}
+
+static int point_inside_or_boundary(double px, double py, const double *verts, int n) {
+    return point_on_boundary(px,py,verts,n) || point_in_polygon(px,py,verts,n);
+}
+
+/* ── Precompute occupancy bitmap ─────────────────────────────────────────── */
+/* PARALELO: cada celda (ix,iy) es independiente → collapse(2) trivial      */
+void precompute_bitmap(
+    const double *verts, int n_verts,
+    int xmin, int ymin, int nx, int ny, int step,
+    uint8_t *out_bitmap)
+{
+    double half = step * 0.5;
+    #pragma omp parallel for collapse(2) schedule(dynamic, 32)
+    for (int iy = 0; iy < ny; iy++) {
+        for (int ix = 0; ix < nx; ix++) {
+            double cy = ymin + iy*step + half;
+            double cx = xmin + ix*step + half;
+            out_bitmap[iy*nx + ix] = (uint8_t)point_in_polygon(cx, cy, verts, n_verts);
+        }
+    }
+}
+
+/* ── rect_in_polygon via corners + concave-vertex check ─────────────────── */
+/* Read-only → thread-safe sin cambios */
+int rect_in_polygon(
+    double rx0, double ry0, double rx1, double ry1,
+    const double *verts, int n_verts)
+{
+    double corners[4][2] = {{rx0,ry0},{rx1,ry0},{rx1,ry1},{rx0,ry1}};
+    for (int i = 0; i < 4; i++) {
+        if (!point_inside_or_boundary(corners[i][0], corners[i][1], verts, n_verts))
+            return 0;
+    }
+    for (int i = 0; i < n_verts; i++) {
+        double vx = verts[2*i], vy = verts[2*i+1];
+        if (vx > rx0 && vx < rx1 && vy > ry0 && vy < ry1) return 0;
+    }
+    return 1;
+}
+
+/* ── rect_overlaps_any ──────────────────────────────────────────────────── */
+/* Read-only → thread-safe sin cambios */
+int rect_overlaps_any(
+    double ax0, double ay0, double ax1, double ay1,
+    const double *rects, int n_rects)
+{
+    for (int i = 0; i < n_rects; i++) {
+        double bx0=rects[4*i], by0=rects[4*i+1], bx1=rects[4*i+2], by1=rects[4*i+3];
+        if (ax0 < bx1 && ax1 > bx0 && ay0 < by1 && ay1 > by0) return 1;
+    }
+    return 0;
+}
+
+/* ── ceiling_at ─────────────────────────────────────────────────────────── */
+/* Read-only → thread-safe sin cambios */
+double ceiling_at(double xmin, double xmax, const double *segs, int n_segs) {
+    double min_h = 1e18;
+    for (int i = 0; i < n_segs; i++) {
+        double seg_start = segs[2*i];
+        double seg_end   = (i+1 < n_segs) ? segs[2*(i+1)] : 1e18;
+        double seg_h     = segs[2*i+1];
+        if (seg_end <= xmin) continue;
+        if (seg_start >= xmax) break;
+        if (seg_h < min_h) min_h = seg_h;
+    }
+    return min_h;
+}
+
+/* ── batch_validate ──────────────────────────────────────────────────────── */
+/* PARALELO: cada candidato es independiente → parallel for directo          */
+int batch_validate(
+    const double *bay_params,
+    const double *candidates,
+    int n_cands,
+    const double *verts, int n_verts,
+    const double *obstacles, int n_obs,
+    const double *ceiling_segs, int n_ceil,
+    const double *placed_rects, int n_placed,
+    const double *placed_gaps,  int n_pgaps,
+    int *out_valid)
+{
+    double W = bay_params[0], D = bay_params[1];
+    double H = bay_params[2], G = bay_params[3];
+    double needed_h = H + G;
+    int count = 0;
+
+    #pragma omp parallel for schedule(dynamic, 64) reduction(+:count)
+    for (int ci = 0; ci < n_cands; ci++) {
+        double px = candidates[3*ci];
+        double py = candidates[3*ci+1];
+        int rot   = (int)candidates[3*ci+2];
+
+        double bx0,by0,bx1,by1, gx0,gy0,gx1,gy1;
+
+        if (rot == 0) {
+            bx0=px;    by0=py;    bx1=px+W;  by1=py+D;
+            gx0=px;    gy0=py+D;  gx1=px+W;  gy1=py+D+G;
+        } else if (rot == 90) {
+            bx0=px;    by0=py;    bx1=px+D;  by1=py+W;
+            gx0=px-G;  gy0=py;    gx1=px;    gy1=py+W;
+        } else if (rot == 180) {
+            bx0=px;    by0=py;    bx1=px+W;  by1=py+D;
+            gx0=px;    gy0=py-G;  gx1=px+W;  gy1=py;
+        } else {
+            bx0=px;    by0=py;    bx1=px+D;  by1=py+W;
+            gx0=px+D;  gy0=py;    gx1=px+D+G; gy1=py+W;
+        }
+
+        int valid = 1;
+        if (!rect_in_polygon(bx0,by0,bx1,by1, verts,n_verts))           valid=0;
+        else if (!rect_in_polygon(gx0,gy0,gx1,gy1, verts,n_verts))      valid=0;
+        else if (ceiling_at(bx0,bx1,ceiling_segs,n_ceil) < needed_h)    valid=0;
+        else if (rect_overlaps_any(bx0,by0,bx1,by1, obstacles,n_obs))   valid=0;
+        else if (rect_overlaps_any(gx0,gy0,gx1,gy1, obstacles,n_obs))   valid=0;
+        else if (rect_overlaps_any(bx0,by0,bx1,by1, placed_rects,n_placed)) valid=0;
+        else if (rect_overlaps_any(gx0,gy0,gx1,gy1, placed_rects,n_placed)) valid=0;
+        else if (rect_overlaps_any(bx0,by0,bx1,by1, placed_gaps,n_pgaps))   valid=0;
+
+        out_valid[ci] = valid;
+        if (valid) count++;
+    }
+    return count;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * full_sweep  –  PARALELO: cada combo calcula su f_val independientemente.
+ *   Usamos reducción manual con critical section para el best global.
+ * ──────────────────────────────────────────────────────────────────────────── */
+int full_sweep(
+    const double *combos,   int n_combos,
+    const double *cands,    int n_cands,
+    const double *verts,    int n_verts,
+    const double *obstacles,int n_obs,
+    const double *ceil_segs,int n_ceil,
+    const double *p_rects,  int n_prects,
+    const double *p_gaps,   int n_pgaps,
+    double sum_p, double sum_l, double occ_area, double total_area,
+    int *out_combo, int *out_cand
+)
+{
+    double best_f = 1e18;
+    int best_combo = -1, best_cand = -1;
+
+    /*
+     * Paralelizamos el loop exterior (combos).
+     * Cada thread mantiene sus propias variables locales best_f/combo/cand
+     * y al final hacemos una reducción con critical section.
+     * El loop interior (cands) permanece secuencial dentro de cada thread
+     * porque hace un early-break en cuanto encuentra el primer válido.
+     */
+    #pragma omp parallel
+    {
+        double   t_best_f     = 1e18;
+        int      t_best_combo = -1;
+        int      t_best_cand  = -1;
+
+        #pragma omp for schedule(dynamic, 4) nowait
+        for (int ci = 0; ci < n_combos; ci++) {
+            double W  = combos[7*ci+0];
+            double D  = combos[7*ci+1];
+            double H  = combos[7*ci+2];
+            double G  = combos[7*ci+3];
+            double pr = combos[7*ci+4];
+            double ld = combos[7*ci+5];
+            int   rot = (int)combos[7*ci+6];
+
+            double needed_h = H + G;
+            double ew = (rot==0||rot==180) ? W : D;
+            double ed = (rot==0||rot==180) ? D : W;
+            double new_occ = occ_area + ew*ed;
+            double new_sp  = sum_p + pr;
+            double new_sl  = sum_l + ld;
+            if (new_sl <= 0 || new_sp <= 0) continue;
+            double f_val = pow(new_sp/new_sl, 2.0 - new_occ/total_area);
+
+            if (f_val >= t_best_f) continue;
+
+            for (int pi = 0; pi < n_cands; pi++) {
+                double px = cands[2*pi];
+                double py = cands[2*pi+1];
+
+                double bx0,by0,bx1,by1, gx0,gy0,gx1,gy1;
+                if (rot == 0) {
+                    bx0=px; by0=py; bx1=px+W; by1=py+D;
+                    gx0=px; gy0=py+D; gx1=px+W; gy1=py+D+G;
+                } else if (rot == 90) {
+                    bx0=px; by0=py; bx1=px+D; by1=py+W;
+                    gx0=px-G; gy0=py; gx1=px; gy1=py+W;
+                } else if (rot == 180) {
+                    bx0=px; by0=py; bx1=px+W; by1=py+D;
+                    gx0=px; gy0=py-G; gx1=px+W; gy1=py;
+                } else {
+                    bx0=px; by0=py; bx1=px+D; by1=py+W;
+                    gx0=px+D; gy0=py; gx1=px+D+G; gy1=py+W;
+                }
+
+                if (!rect_in_polygon(bx0,by0,bx1,by1,verts,n_verts)) continue;
+                if (!rect_in_polygon(gx0,gy0,gx1,gy1,verts,n_verts)) continue;
+                if (ceiling_at(bx0,bx1,ceil_segs,n_ceil) < needed_h) continue;
+                if (rect_overlaps_any(bx0,by0,bx1,by1,obstacles,n_obs)) continue;
+                if (rect_overlaps_any(gx0,gy0,gx1,gy1,obstacles,n_obs)) continue;
+                if (rect_overlaps_any(bx0,by0,bx1,by1,p_rects,n_prects)) continue;
+                if (rect_overlaps_any(gx0,gy0,gx1,gy1,p_rects,n_prects)) continue;
+                if (rect_overlaps_any(bx0,by0,bx1,by1,p_gaps,n_pgaps)) continue;
+
+                t_best_f     = f_val;
+                t_best_combo = ci;
+                t_best_cand  = pi;
+                break;
+            }
+        }
+
+        /* Reducción: un thread a la vez actualiza el mejor global */
+        #pragma omp critical
+        {
+            if (t_best_combo >= 0 && t_best_f < best_f) {
+                best_f     = t_best_f;
+                best_combo = t_best_combo;
+                best_cand  = t_best_cand;
+            }
+        }
+    }
+
+    *out_combo = best_combo;
+    *out_cand  = best_cand;
+    return (best_combo >= 0) ? 1 : 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * full_sweep_topk  –  PARALELO: top-K distinct placements
+ *
+ * Estrategia:
+ *   1. Cada thread trabaja sobre un subconjunto de combos.
+ *   2. Cada thread construye su propio buffer local de resultados (_SweepResult[]).
+ *   3. Al final, los buffers se fusionan y ordenan para extraer el top-K global.
+ *
+ * Esto evita cualquier lock durante el loop caliente.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+typedef struct { double f; int combo; int cand; } _SweepResult;
+
+static int _cmp_sweep(const void *a, const void *b) {
+    double fa = ((_SweepResult*)a)->f;
+    double fb = ((_SweepResult*)b)->f;
+    if (fa < fb) return -1;
+    if (fa > fb) return  1;
+    return 0;
+}
+
+int full_sweep_topk(
+    const double *combos,   int n_combos,
+    const double *cands,    int n_cands,
+    const double *verts,    int n_verts,
+    const double *obstacles,int n_obs,
+    const double *ceil_segs,int n_ceil,
+    const double *p_rects,  int n_prects,
+    const double *p_gaps,   int n_pgaps,
+    double sum_p, double sum_l, double occ_area, double total_area,
+    int topk,
+    int *out_results
+)
+{
+    /*
+     * Reservamos un buffer global donde cada thread escribe en su propia franja.
+     * Franja del thread t: [t*n_combos .. (t+1)*n_combos)
+     * Así evitamos completamente sincronización en el loop caliente.
+     */
+    int n_threads;
+    #pragma omp parallel
+    #pragma omp single
+    n_threads = omp_get_num_threads();
+
+    /* Buffer: worst-case cada thread encuentra n_combos resultados */
+    _SweepResult *buf = (_SweepResult*)malloc(
+        (size_t)n_threads * n_combos * sizeof(_SweepResult));
+    if (!buf) return 0;
+
+    /* found[t] = cuántos resultados encontró el thread t */
+    int *found = (int*)calloc(n_threads, sizeof(int));
+    if (!found) { free(buf); return 0; }
+
+    #pragma omp parallel
+    {
+        int tid      = omp_get_thread_num();
+        int t_found  = 0;
+        /* Puntero al inicio de la franja de este thread */
+        _SweepResult *my_buf = buf + tid * n_combos;
+
+        #pragma omp for schedule(dynamic, 4) nowait
+        for (int ci = 0; ci < n_combos; ci++) {
+            double W  = combos[7*ci+0];
+            double D  = combos[7*ci+1];
+            double H  = combos[7*ci+2];
+            double G  = combos[7*ci+3];
+            double pr = combos[7*ci+4];
+            double ld = combos[7*ci+5];
+            int   rot = (int)combos[7*ci+6];
+
+            double needed_h = H + G;
+            double ew = (rot==0||rot==180) ? W : D;
+            double ed = (rot==0||rot==180) ? D : W;
+            double new_occ = occ_area + ew*ed;
+            double new_sp  = sum_p + pr;
+            double new_sl  = sum_l + ld;
+            if (new_sl <= 0 || new_sp <= 0) continue;
+            double f_val = pow(new_sp/new_sl, 2.0 - new_occ/total_area);
+
+            /* scan candidates para la primera posición válida de este combo */
+            for (int pi = 0; pi < n_cands; pi++) {
+                double px = cands[2*pi];
+                double py = cands[2*pi+1];
+
+                double bx0,by0,bx1,by1, gx0,gy0,gx1,gy1;
+                if (rot == 0) {
+                    bx0=px; by0=py; bx1=px+W; by1=py+D;
+                    gx0=px; gy0=py+D; gx1=px+W; gy1=py+D+G;
+                } else if (rot == 90) {
+                    bx0=px; by0=py; bx1=px+D; by1=py+W;
+                    gx0=px-G; gy0=py; gx1=px; gy1=py+W;
+                } else if (rot == 180) {
+                    bx0=px; by0=py; bx1=px+W; by1=py+D;
+                    gx0=px; gy0=py-G; gx1=px+W; gy1=py;
+                } else {
+                    bx0=px; by0=py; bx1=px+D; by1=py+W;
+                    gx0=px+D; gy0=py; gx1=px+D+G; gy1=py+W;
+                }
+
+                if (!rect_in_polygon(bx0,by0,bx1,by1,verts,n_verts)) continue;
+                if (!rect_in_polygon(gx0,gy0,gx1,gy1,verts,n_verts)) continue;
+                if (ceiling_at(bx0,bx1,ceil_segs,n_ceil) < needed_h) continue;
+                if (rect_overlaps_any(bx0,by0,bx1,by1,obstacles,n_obs)) continue;
+                if (rect_overlaps_any(gx0,gy0,gx1,gy1,obstacles,n_obs)) continue;
+                if (rect_overlaps_any(bx0,by0,bx1,by1,p_rects,n_prects)) continue;
+                if (rect_overlaps_any(gx0,gy0,gx1,gy1,p_rects,n_prects)) continue;
+                if (rect_overlaps_any(bx0,by0,bx1,by1,p_gaps,n_pgaps)) continue;
+
+                my_buf[t_found].f     = f_val;
+                my_buf[t_found].combo = ci;
+                my_buf[t_found].cand  = pi;
+                t_found++;
+                break;  /* mejor posición para este combo */
+            }
+        }
+        found[tid] = t_found;
+    }
+
+    /* ── Merge de buffers de todos los threads ── */
+    int total_found = 0;
+    for (int t = 0; t < n_threads; t++) total_found += found[t];
+
+    /* Compactar en buf[0..total_found) */
+    int write = 0;
+    for (int t = 0; t < n_threads; t++) {
+        _SweepResult *src = buf + t * n_combos;
+        if (write != t * n_combos) {
+            memmove(buf + write, src, found[t] * sizeof(_SweepResult));
+        }
+        write += found[t];
+    }
+
+    /* Ordenar por f ascendente */
+    qsort(buf, total_found, sizeof(_SweepResult), _cmp_sweep);
+
+    int ret = total_found < topk ? total_found : topk;
+    for (int i = 0; i < ret; i++) {
+        out_results[2*i]   = buf[i].combo;
+        out_results[2*i+1] = buf[i].cand;
+    }
+
+    free(found);
+    free(buf);
+    return ret;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * full_sweep_topk_multi  –  like full_sweep_topk but returns up to max_per_combo
+ * valid positions per combo. Gives beam search more diverse candidates when
+ * candidates are ordered btb/edge-first (so multiple positions per combo are
+ * from different spatial locations).
+ * ──────────────────────────────────────────────────────────────────────────── */
+int full_sweep_topk_multi(
+    const double *combos,   int n_combos,
+    const double *cands,    int n_cands,
+    const double *verts,    int n_verts,
+    const double *obstacles,int n_obs,
+    const double *ceil_segs,int n_ceil,
+    const double *p_rects,  int n_prects,
+    const double *p_gaps,   int n_pgaps,
+    double sum_p, double sum_l, double occ_area, double total_area,
+    int topk, int max_per_combo,
+    int *out_results
+)
+{
+    int n_threads;
+    #pragma omp parallel
+    #pragma omp single
+    n_threads = omp_get_num_threads();
+
+    int slots_per_thread = n_combos * max_per_combo;
+    _SweepResult *buf = (_SweepResult*)malloc(
+        (size_t)n_threads * slots_per_thread * sizeof(_SweepResult));
+    if (!buf) return 0;
+    int *found = (int*)calloc(n_threads, sizeof(int));
+    if (!found) { free(buf); return 0; }
+
+    #pragma omp parallel
+    {
+        int tid     = omp_get_thread_num();
+        int t_found = 0;
+        _SweepResult *my_buf = buf + tid * slots_per_thread;
+
+        #pragma omp for schedule(dynamic, 4) nowait
+        for (int ci = 0; ci < n_combos; ci++) {
+            double W  = combos[7*ci+0];
+            double D  = combos[7*ci+1];
+            double H  = combos[7*ci+2];
+            double G  = combos[7*ci+3];
+            double pr = combos[7*ci+4];
+            double ld = combos[7*ci+5];
+            int   rot = (int)combos[7*ci+6];
+
+            double needed_h = H + G;
+            double ew = (rot==0||rot==180) ? W : D;
+            double ed = (rot==0||rot==180) ? D : W;
+            double new_occ = occ_area + ew*ed;
+            double new_sp  = sum_p + pr;
+            double new_sl  = sum_l + ld;
+            if (new_sl <= 0 || new_sp <= 0) continue;
+            double f_val = pow(new_sp/new_sl, 2.0 - new_occ/total_area);
+
+            int n_for_combo = 0;
+            for (int pi = 0; pi < n_cands && n_for_combo < max_per_combo; pi++) {
+                double px = cands[2*pi];
+                double py = cands[2*pi+1];
+
+                double bx0,by0,bx1,by1, gx0,gy0,gx1,gy1;
+                if (rot == 0) {
+                    bx0=px; by0=py; bx1=px+W; by1=py+D;
+                    gx0=px; gy0=py+D; gx1=px+W; gy1=py+D+G;
+                } else if (rot == 90) {
+                    bx0=px; by0=py; bx1=px+D; by1=py+W;
+                    gx0=px-G; gy0=py; gx1=px; gy1=py+W;
+                } else if (rot == 180) {
+                    bx0=px; by0=py; bx1=px+W; by1=py+D;
+                    gx0=px; gy0=py-G; gx1=px+W; gy1=py;
+                } else {
+                    bx0=px; by0=py; bx1=px+D; by1=py+W;
+                    gx0=px+D; gy0=py; gx1=px+D+G; gy1=py+W;
+                }
+
+                if (!rect_in_polygon(bx0,by0,bx1,by1,verts,n_verts)) continue;
+                if (!rect_in_polygon(gx0,gy0,gx1,gy1,verts,n_verts)) continue;
+                if (ceiling_at(bx0,bx1,ceil_segs,n_ceil) < needed_h) continue;
+                if (rect_overlaps_any(bx0,by0,bx1,by1,obstacles,n_obs)) continue;
+                if (rect_overlaps_any(gx0,gy0,gx1,gy1,obstacles,n_obs)) continue;
+                if (rect_overlaps_any(bx0,by0,bx1,by1,p_rects,n_prects)) continue;
+                if (rect_overlaps_any(gx0,gy0,gx1,gy1,p_rects,n_prects)) continue;
+                if (rect_overlaps_any(bx0,by0,bx1,by1,p_gaps,n_pgaps)) continue;
+
+                if (t_found < slots_per_thread) {
+                    my_buf[t_found].f     = f_val;
+                    my_buf[t_found].combo = ci;
+                    my_buf[t_found].cand  = pi;
+                    t_found++;
+                }
+                n_for_combo++;
+            }
+        }
+        found[tid] = t_found;
+    }
+
+    int total_found = 0;
+    for (int t = 0; t < n_threads; t++) total_found += found[t];
+
+    int write = 0;
+    for (int t = 0; t < n_threads; t++) {
+        _SweepResult *src = buf + t * slots_per_thread;
+        if (write != t * slots_per_thread)
+            memmove(buf + write, src, found[t] * sizeof(_SweepResult));
+        write += found[t];
+    }
+
+    qsort(buf, total_found, sizeof(_SweepResult), _cmp_sweep);
+
+    int ret = total_found < topk ? total_found : topk;
+    for (int i = 0; i < ret; i++) {
+        out_results[2*i]   = buf[i].combo;
+        out_results[2*i+1] = buf[i].cand;
+    }
+
+    free(found);
+    free(buf);
+    return ret;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * validate_single  –  sin cambios (solo se llama una vez)
+ * ──────────────────────────────────────────────────────────────────────────── */
+int validate_single(
+    double W, double D, double H, double G,
+    double px, double py, int rot,
+    const double *verts,    int n_verts,
+    const double *obstacles,int n_obs,
+    const double *ceil_segs,int n_ceil,
+    const double *p_rects,  int n_prects,
+    const double *p_gaps,   int n_pgaps)
+{
+    double bx0,by0,bx1,by1, gx0,gy0,gx1,gy1;
+    double needed_h = H + G;
+
+    if (rot == 0) {
+        bx0=px; by0=py; bx1=px+W; by1=py+D;
+        gx0=px; gy0=py+D; gx1=px+W; gy1=py+D+G;
+    } else if (rot == 90) {
+        bx0=px; by0=py; bx1=px+D; by1=py+W;
+        gx0=px-G; gy0=py; gx1=px; gy1=py+W;
+    } else if (rot == 180) {
+        bx0=px; by0=py; bx1=px+W; by1=py+D;
+        gx0=px; gy0=py-G; gx1=px+W; gy1=py;
+    } else {
+        bx0=px; by0=py; bx1=px+D; by1=py+W;
+        gx0=px+D; gy0=py; gx1=px+D+G; gy1=py+W;
+    }
+
+    if (!rect_in_polygon(bx0,by0,bx1,by1,verts,n_verts)) return 0;
+    if (!rect_in_polygon(gx0,gy0,gx1,gy1,verts,n_verts)) return 0;
+    if (ceiling_at(bx0,bx1,ceil_segs,n_ceil) < needed_h) return 0;
+    if (rect_overlaps_any(bx0,by0,bx1,by1,obstacles,n_obs)) return 0;
+    if (rect_overlaps_any(gx0,gy0,gx1,gy1,obstacles,n_obs)) return 0;
+    if (rect_overlaps_any(bx0,by0,bx1,by1,p_rects,n_prects)) return 0;
+    if (rect_overlaps_any(gx0,gy0,gx1,gy1,p_rects,n_prects)) return 0;
+    if (rect_overlaps_any(bx0,by0,bx1,by1,p_gaps,n_pgaps)) return 0;
+    return 1;
+}
+`;
+
+
+let activeCodeTab = 'python';
+
+function toggleCodePanel() {
+  const panel = document.getElementById('code-panel');
+  const isHidden = panel.classList.contains('hidden');
+  if (isHidden) {
+    // Initialize editors with defaults if empty
+    const pyEditor = document.getElementById('editor-python');
+    if (!pyEditor.value) {
+      pyEditor.value = DEFAULT_PYTHON;
+      updateStatusBar('python');
+    }
+    const shEditor = document.getElementById('editor-sh');
+    if (!shEditor.value) {
+      shEditor.value = DEFAULT_SH;
+      updateStatusBar('sh');
+    }
+    const cEditor = document.getElementById('editor-c');
+    if (!cEditor.value) {
+      cEditor.value = DEFAULT_C;
+      updateStatusBar('c');
+    }
+    panel.classList.remove('hidden');
+    document.getElementById('btn-code').classList.add('active');
+  } else {
+    panel.classList.add('hidden');
+    document.getElementById('btn-code').classList.remove('active');
+  }
+}
+
+function switchCodeTab(tab) {
+  activeCodeTab = tab;
+  ['python','c','sh'].forEach(t => {
+    document.getElementById('ctab-' + t).classList.toggle('active', t === tab);
+    document.getElementById('cpane-' + t).classList.toggle('active', t === tab);
+  });
+  updateStatusBar(tab);
+}
+
+function updateStatusBar(tab) {
+  const editor = document.getElementById('editor-' + tab);
+  if (!editor) return;
+  const lines = editor.value.split('\n').length;
+  const chars = editor.value.length;
+  document.getElementById('cp-status-lines').textContent = lines + ' lines';
+  document.getElementById('cp-status-chars').textContent = chars.toLocaleString() + ' chars';
+}
+
+// Live status update on editor input
+['python','c','sh'].forEach(t => {
+  const ed = document.getElementById('editor-' + t);
+  if (ed) {
+    ed.addEventListener('input', () => { if (activeCodeTab === t) updateStatusBar(t); });
+    // Handle Tab key for indentation
+    ed.addEventListener('keydown', e => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = ed.selectionStart, end = ed.selectionEnd;
+        ed.value = ed.value.substring(0, start) + '    ' + ed.value.substring(end);
+        ed.selectionStart = ed.selectionEnd = start + 4;
+      }
+    });
+  }
+});
+
+function loadCodeFile(event, tab) {
+  const file = event.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('editor-' + tab).value = e.target.result;
+    // Update filename display
+    if (tab === 'c') document.getElementById('cfile-c').textContent = file.name;
+    if (tab === 'sh') document.getElementById('cfile-sh').textContent = file.name;
+    updateStatusBar(tab);
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function resetCodeFile() {
+  if (activeCodeTab === 'python') {
+    document.getElementById('editor-python').value = DEFAULT_PYTHON;
+    updateStatusBar('python');
+  } else if (activeCodeTab === 'sh') {
+    document.getElementById('editor-sh').value = DEFAULT_SH;
+    updateStatusBar('sh');
+  } else {
+    document.getElementById('editor-c').value = DEFAULT_C;
+    updateStatusBar('c');
+  }
+}
+
+function downloadCurrentCode() {
+  const ext = { python: '.py', c: '.c', sh: '.sh' }[activeCodeTab];
+  const fname = { python: 'warehouse_optimizer_v5.py', c: 'warehouse_core_v3.c', sh: 'run_optimizer.sh' }[activeCodeTab];
+  const content = document.getElementById('editor-' + activeCodeTab).value;
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  PYODIDE OPTIMIZER RUNNER
+// ═══════════════════════════════════════════════════════════════
+
+let pyodideInstance = null;
+let pyodideLoading = false;
+let runnerOutputCSV = null;
+let runnerAborted = false;
+
+function buildSceneFromPanel() {
+  // If no output but we have warehouse+bays, suggest running optimizer
+  if (!csvData.output && csvData.warehouse && csvData.bays) {
+    const go = confirm('No output.csv loaded. Run the optimizer to generate it automatically?');
+    if (go) { runOptimizer(); return; }
+  }
+  buildScene();
+}
+
+function logRunner(msg, cls='log-info') {
+  const log = document.getElementById('runner-log');
+  const span = document.createElement('span');
+  span.className = cls;
+  span.textContent = msg + '\n';
+  log.appendChild(span);
+  log.scrollTop = log.scrollHeight;
+}
+
+function setRunnerPhase(txt, pct) {
+  document.getElementById('runner-phase').textContent = txt;
+  document.getElementById('runner-bar').style.width = pct + '%';
+}
+
+function setRunnerDot(state) {
+  const d = document.getElementById('runner-dot');
+  d.className = 'dot ' + (state === 'running' ? '' : state);
+}
+
+async function runOptimizer() {
+  if (!csvData.warehouse || !csvData.bays) {
+    alert('Please load WAREHOUSE.CSV and TYPES_OF_BAYS.CSV first.');
+    return;
+  }
+
+  // Show runner overlay
+  document.getElementById('runner-overlay').classList.remove('hidden');
+  document.getElementById('runner-log').innerHTML = '';
+  document.getElementById('btn-runner-cancel').style.display = 'inline-block';
+  document.getElementById('btn-runner-render').style.display = 'none';
+  document.getElementById('btn-runner-download').style.display = 'none';
+  document.getElementById('runner-status').textContent = 'Starting...';
+  document.getElementById('runner-status').className = 'runner-status-txt';
+  runnerAborted = false;
+  runnerOutputCSV = null;
+  setRunnerDot('running');
+
+  // Step 1: Load Pyodide
+  if (!pyodideInstance) {
+    setRunnerPhase('Loading Pyodide runtime...', 5);
+    logRunner('⟳ Loading Pyodide (Python 3.11 WASM)...', 'log-info');
+    logRunner('  First load: ~8MB download. Please wait.', 'log-warn');
+    try {
+      if (!window.loadPyodide) {
+        // Dynamically load pyodide script
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js';
+          s.onload = resolve;
+          s.onerror = () => reject(new Error('Failed to load Pyodide script'));
+          document.head.appendChild(s);
+        });
+      }
+      pyodideLoading = true;
+      pyodideInstance = await loadPyodide({
+        indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.1/full/',
+        stdout: (msg) => logRunner(msg, 'log-info'),
+        stderr: (msg) => { if (!msg.includes('Warning')) logRunner(msg, 'log-warn'); },
+      });
+      pyodideLoading = false;
+      logRunner('✓ Pyodide loaded successfully.', 'log-ok');
+    } catch(e) {
+      logRunner('✗ Failed to load Pyodide: ' + e.message, 'log-err');
+      setRunnerPhase('Error', 0);
+      setRunnerDot('error');
+      document.getElementById('runner-status').textContent = 'Failed to load runtime';
+      document.getElementById('runner-status').className = 'runner-status-txt error';
+      document.getElementById('btn-runner-cancel').style.display = 'none';
+      return;
+    }
+  } else {
+    logRunner('✓ Pyodide already loaded.', 'log-ok');
+  }
+
+  if (runnerAborted) return;
+
+  setRunnerPhase('Preparing files...', 20);
+  logRunner('', 'log-info');
+  logRunner('━━━ MECALUX WAREHOUSE OPTIMIZER ━━━', 'log-head');
+  logRunner('  Mode: Python pure (no C extension)', 'log-warn');
+  logRunner('  WASM environment — ctypes/OpenMP disabled', 'log-warn');
+  logRunner('', 'log-info');
+
+  // Write CSV files into Pyodide filesystem
+  pyodideInstance.FS.writeFile('/warehouse.csv', csvData.warehouse);
+  pyodideInstance.FS.writeFile('/types_of_bays.csv', csvData.bays);
+  if (csvData.obstacles) pyodideInstance.FS.writeFile('/obstacles.csv', csvData.obstacles);
+  if (csvData.ceiling)   pyodideInstance.FS.writeFile('/ceiling.csv',   csvData.ceiling);
+  logRunner('✓ CSV files written to virtual filesystem.', 'log-ok');
+
+  // Write a WASM-safe version of the optimizer (no ctypes, no multiprocessing)
+  const wasmSafeOptimizer = buildWasmSafeOptimizer();
+  pyodideInstance.FS.writeFile('/optimizer.py', wasmSafeOptimizer);
+  logRunner('✓ WASM-safe optimizer prepared.', 'log-ok');
+
+  setRunnerPhase('Running optimizer...', 35);
+  logRunner('', 'log-info');
+  logRunner('⟳ Starting optimization...', 'log-head');
+
+  try {
+    await pyodideInstance.runPythonAsync(`
+import sys
+sys.argv = [
+  'optimizer.py',
+  '/warehouse.csv',
+  '/types_of_bays.csv',
+  '/output.csv',
+  ${csvData.obstacles ? "'/obstacles.csv'," : ''}
+  ${csvData.ceiling   ? "'/ceiling.csv',"   : ''}
+]
+exec(open('/optimizer.py').read())
+`);
+
+    if (runnerAborted) return;
+
+    setRunnerPhase('Reading results...', 90);
+
+    // Read output
+    const outBytes = pyodideInstance.FS.readFile('/output.csv', { encoding: 'utf8' });
+    runnerOutputCSV = outBytes;
+    csvData.output = outBytes;
+    markSlot('output', '✓ Generated by optimizer');
+
+    const lineCount = outBytes.trim().split('\n').length;
+    logRunner('', 'log-info');
+    logRunner(`✓ Done! ${lineCount} bays placed.`, 'log-ok');
+    logRunner('', 'log-info');
+    logRunner('→ Click "Render Scene" to visualize the result.', 'log-head');
+
+    setRunnerPhase('Complete ✓', 100);
+    setRunnerDot('idle');
+    document.getElementById('runner-bar').style.background = '#4ade80';
+    document.getElementById('runner-status').textContent = `✓ ${lineCount} bays placed — ready to render`;
+    document.getElementById('runner-status').className = 'runner-status-txt done';
+    document.getElementById('btn-runner-render').style.display = 'inline-block';
+    document.getElementById('btn-runner-download').style.display = 'inline-block';
+    document.getElementById('btn-runner-cancel').style.display = 'none';
+
+  } catch(e) {
+    logRunner('', 'log-info');
+    logRunner('✗ Optimizer error: ' + e.message, 'log-err');
+    setRunnerPhase('Error', 0);
+    setRunnerDot('error');
+    document.getElementById('runner-status').textContent = 'Optimizer failed';
+    document.getElementById('runner-status').className = 'runner-status-txt error';
+    document.getElementById('btn-runner-cancel').style.display = 'none';
+    console.error(e);
+  }
+}
+
+function cancelRunner() {
+  runnerAborted = true;
+  logRunner('✗ Aborted by user.', 'log-err');
+  setRunnerDot('error');
+  setRunnerPhase('Aborted', 0);
+  document.getElementById('runner-status').textContent = 'Aborted';
+  document.getElementById('btn-runner-cancel').style.display = 'none';
+}
+
+function closeRunner() {
+  document.getElementById('runner-overlay').classList.add('hidden');
+}
+
+function renderFromRunner() {
+  document.getElementById('runner-overlay').classList.add('hidden');
+  document.getElementById('file-panel').classList.add('hidden');
+  buildScene();
+}
+
+function downloadOutput() {
+  if (!runnerOutputCSV) return;
+  const blob = new Blob([runnerOutputCSV], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'output.csv';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+function buildWasmSafeOptimizer() {
+  // Stripped-down version of the optimizer that runs in Pyodide (no ctypes, no multiprocessing)
+  return `
+import csv, math, os, sys, time, random, heapq
+
+GRID_STEP    = 200
+MAX_PER_TYPE = 100
+ROTATIONS    = [0, 90, 180, 270]
+TIME_LIMIT   = 20.0
+
+def polygon_area(v):
+    n, a = len(v), 0.0
+    for i in range(n):
+        j = (i+1) % n
+        a += v[i][0]*v[j][1] - v[j][0]*v[i][1]
+    return abs(a)/2.0
+
+def _pip(px, py, v):
+    inside, j, n = False, len(v)-1, len(v)
+    for i in range(n):
+        xi,yi=v[i]; xj,yj=v[j]
+        if ((yi>py)!=(yj>py)) and (px<(xj-xi)*(py-yi)/(yj-yi)+xi):
+            inside=not inside
+        j=i
+    return inside
+
+def _on_boundary(px, py, v, eps=1e-6):
+    n=len(v)
+    for i in range(n):
+        j=(i+1)%n
+        x1,y1=v[i]; x2,y2=v[j]
+        if abs((x2-x1)*(py-y1)-(y2-y1)*(px-x1))<eps:
+            if min(x1,x2)-eps<=px<=max(x1,x2)+eps and min(y1,y2)-eps<=py<=max(y1,y2)+eps:
+                return True
+    return False
+
+def _rect_in_poly(rx0,ry0,rx1,ry1,v):
+    for cx,cy in [(rx0,ry0),(rx1,ry0),(rx1,ry1),(rx0,ry1)]:
+        if not (_on_boundary(cx,cy,v) or _pip(cx,cy,v)):
+            return False
+    for vx,vy in v:
+        if rx0<vx<rx1 and ry0<vy<ry1:
+            return False
+    return True
+
+def _overlap(ax0,ay0,ax1,ay1,bx0,by0,bx1,by1):
+    return ax0<bx1 and ax1>bx0 and ay0<by1 and ay1>by0
+
+def polygon_area(v):
+    n, a = len(v), 0.0
+    for i in range(n):
+        j = (i+1) % n
+        a += v[i][0]*v[j][1] - v[j][0]*v[i][1]
+    return abs(a)/2.0
+
+def parse_warehouse(fp):
+    v=[]
+    with open(fp,newline='') as f:
+        for row in csv.reader(f):
+            row=[r.strip() for r in row if r.strip()]
+            if len(row)>=2: v.append((float(row[0]),float(row[1])))
+    area=polygon_area(v)
+    print(f"[Warehouse] {len(v)} vertices, area={area/1e6:.2f} m2")
+    return v, area
+
+def parse_obstacles(fp):
+    obs=[]
+    try:
+        with open(fp) as f:
+            for line in f.read().strip().split('\\n'):
+                p=[x.strip() for x in line.split(',') if x.strip()]
+                if len(p)>=4:
+                    x,y,w,d=map(float,p[:4])
+                    obs.append((x,y,x+w,y+d))
+    except: pass
+    print(f"[Obstacles] {len(obs)}")
+    return obs
+
+def parse_ceiling(fp):
+    s=[]
+    try:
+        with open(fp,newline='') as f:
+            for row in csv.reader(f):
+                row=[r.strip() for r in row if r.strip()]
+                if len(row)>=2: s.append((float(row[0]),float(row[1])))
+        s.sort()
+    except: pass
+    return s
+
+def parse_bays(fp):
+    bays=[]
+    with open(fp,newline='') as f:
+        for row in csv.reader(f):
+            row=[r.strip() for r in row if r.strip()]
+            if len(row)>=7:
+                nl,pr=float(row[5]),float(row[6])
+                bays.append({'id':int(row[0]),'width':float(row[1]),'depth':float(row[2]),
+                    'height':float(row[3]),'gap':float(row[4]),'nloads':nl,'price':pr,
+                    'ratio':pr/nl if nl>0 else float('inf'),'area':float(row[1])*float(row[2])})
+    print(f"[Bays] {len(bays)} types")
+    return bays
+
+def bay_rects(bay, px, py, rot):
+    w,d,g=bay['width'],bay['depth'],bay['gap']
+    if rot==0:   return (px,py,px+w,py+d),(px,py+d,px+w,py+d+g)
+    if rot==90:  return (px,py,px+d,py+w),(px-g,py,px,py+w)
+    if rot==180: return (px,py,px+w,py+d),(px,py-g,px+w,py)
+    return              (px,py,px+d,py+w),(px+d,py,px+d+g,py+w)
+
+def ceil_h_at(x0, x1, segs):
+    if not segs: return float('inf')
+    mh = float('inf')
+    for i,(sx,sh) in enumerate(segs):
+        se = segs[i+1][0] if i+1<len(segs) else float('inf')
+        if se <= x0: continue
+        if sx >= x1: break
+        mh = min(mh, sh)
+    return mh
+
+def is_valid(bay,px,py,rot,poly,obs,placed,ceil_segs=[]):
+    br,gr=bay_rects(bay,px,py,rot)
+    if not _rect_in_poly(*br,poly): return False
+    if not _rect_in_poly(*gr,poly): return False
+    for o in obs:
+        if _overlap(*br,*o) or _overlap(*gr,*o): return False
+    for p in placed:
+        if _overlap(*br,*p['rect']): return False
+        if _overlap(*br,*p['gap_rect']): return False
+    # Check ceiling height constraint
+    if ceil_segs:
+        max_h = ceil_h_at(br[0], br[2], ceil_segs)
+        if bay['height'] > max_h:
+            return False
+    return True
+
+def obj_score(placed, poly_area):
+    if not placed: return float('inf')
+    sp=sum(p['bay']['price'] for p in placed)
+    sl=sum(p['bay']['nloads'] for p in placed)
+    sa=sum(p['bay']['area'] for p in placed)
+    pct=sa/poly_area if poly_area>0 else 0
+    return (sp/sl)**(2-pct) if sl>0 else float('inf')
+
+def build_grid(vertices, step):
+    xs=[v[0] for v in vertices]; ys=[v[1] for v in vertices]
+    xmin=int(math.floor(min(xs)/step)*step)
+    xmax=int(math.ceil(max(xs)/step)*step)
+    ymin=int(math.floor(min(ys)/step)*step)
+    ymax=int(math.ceil(max(ys)/step)*step)
+    half=step/2.0
+    pts=[]
+    for x in range(xmin,xmax,step):
+        for y in range(ymin,ymax,step):
+            if _pip(x+half,y+half,vertices):
+                pts.append((float(x),float(y)))
+    pts.sort(key=lambda p:(p[1],p[0]))
+    print(f"[Grid] {len(pts)} points (step={step}mm)")
+    return pts
+
+def greedy_place(bays, grid, poly, poly_area, obs, strategy='ratio', time_limit=18.0, ceil_segs=[]):
+    t0=time.time()
+    if strategy=='ratio':
+        sorted_bays=sorted(bays,key=lambda b:b['ratio'])
+    elif strategy=='area':
+        sorted_bays=sorted(bays,key=lambda b:-b['area'])
+    else:
+        sorted_bays=sorted(bays,key=lambda b:b['ratio']*0.5-b['area']*0.5/max(b['area'] for b in bays))
+
+    placed=[]; counts={b['id']:0 for b in bays}
+    for gx,gy in grid:
+        if time.time()-t0>time_limit: break
+        best=None; best_score=float('inf')
+        for bay in sorted_bays:
+            if counts[bay['id']]>=MAX_PER_TYPE: continue
+            for rot in ROTATIONS:
+                if is_valid(bay,gx,gy,rot,poly,obs,placed,ceil_segs):
+                    trial=placed+[{'bay':bay,'rect':bay_rects(bay,gx,gy,rot)[0],'gap_rect':bay_rects(bay,gx,gy,rot)[1],'x':gx,'y':gy,'rot':rot}]
+                    s=obj_score(trial,poly_area)
+                    if s<best_score:
+                        best_score=s
+                        best={'bay':bay,'rect':bay_rects(bay,gx,gy,rot)[0],'gap_rect':bay_rects(bay,gx,gy,rot)[1],'x':gx,'y':gy,'rot':rot}
+                    break
+        if best:
+            placed.append(best); counts[best['bay']['id']]+=1
+    return placed
+
+def local_search(placed, bays, grid, poly, poly_area, obs, iters=40, time_limit=3.0):
+    t0=time.time()
+    best=list(placed); best_s=obj_score(best,poly_area)
+    for _ in range(iters):
+        if time.time()-t0>time_limit: break
+        if not best: break
+        i=random.randrange(len(best))
+        trial=[p for j,p in enumerate(best) if j!=i]
+        s=obj_score(trial,poly_area)
+        if s<=best_s: best=trial; best_s=s
+    return best
+
+def write_output(placed, fp):
+    with open(fp,'w',newline='') as f:
+        w=csv.writer(f)
+        for p in placed:
+            w.writerow([p['bay']['id'],int(p['x']),int(p['y']),p['rot']])
+    print(f"[Output] {len(placed)} bays written to {fp}")
+
+def main():
+    args=sys.argv[1:]
+    if len(args)<3:
+        print("Usage: optimizer.py warehouse.csv bays.csv output.csv [obstacles.csv] [ceiling.csv]")
+        sys.exit(1)
+    wf,bf,of=args[0],args[1],args[2]
+    obs_f=args[3] if len(args)>3 else None
+    ceil_f=args[4] if len(args)>4 else None
+
+    poly,poly_area=parse_warehouse(wf)
+    bays=parse_bays(bf)
+    obs=parse_obstacles(obs_f) if obs_f else []
+    grid=build_grid(poly,GRID_STEP)
+    ceil_segs=parse_ceiling(ceil_f) if ceil_f else []
+
+    t_total=time.time()
+    results=[]
+    for strategy in ['ratio','area','mixed']:
+        if time.time()-t_total > TIME_LIMIT-2: break
+        remaining=TIME_LIMIT-(time.time()-t_total)
+        print(f"[Strategy] {strategy}...")
+        placed=greedy_place(bays,grid,poly,poly_area,obs,strategy,time_limit=min(remaining*0.7,12),ceil_segs=ceil_segs)
+        placed=local_search(placed,bays,grid,poly,poly_area,obs,iters=30,time_limit=min(remaining*0.2,3))
+        s=obj_score(placed,poly_area)
+        print(f"  -> {len(placed)} bays, score={s:.5f}")
+        results.append((s,placed))
+
+    best_s,best_placed=min(results,key=lambda x:x[0])
+    elapsed=time.time()-t_total
+    print(f"[Done] Best: {len(best_placed)} bays, score={best_s:.5f}, time={elapsed:.1f}s")
+    write_output(best_placed,of)
+
+main()
+`;
+}
+
+initThree();
+setTimeout(()=>{document.getElementById('loader').classList.add('fade-out');setTimeout(()=>document.getElementById('loader').style.display='none',600);},1200);
+</script>
+
+<!-- ── CODE EDITOR PANEL ── -->
+<div id="code-panel" class="hidden">
+  <div class="cp-topbar">
+    <div class="cp-brand">CODE <span>EDITOR</span></div>
+    <div class="cp-tabs">
+      <button class="cp-tab active" onclick="switchCodeTab('python')" id="ctab-python">
+        🐍 Python <span class="cp-tab-badge">.py</span>
+      </button>
+      <button class="cp-tab" onclick="switchCodeTab('c')" id="ctab-c">
+        ⚙️ C Extension <span class="cp-tab-badge">.c</span>
+      </button>
+      <button class="cp-tab" onclick="switchCodeTab('sh')" id="ctab-sh">
+        🖥️ Shell Script <span class="cp-tab-badge">.sh</span>
+      </button>
+    </div>
+    <div class="cp-actions">
+      <button class="cp-close-btn" onclick="resetCodeFile()" title="Reset to default">↺ Reset</button>
+      <button class="cp-close-btn" onclick="downloadCurrentCode()">⬇ Download</button>
+      <button class="cp-close-btn" onclick="toggleCodePanel()">✕ Close</button>
+    </div>
+  </div>
+
+  <div class="cp-body">
+    <!-- Python pane -->
+    <div class="cp-pane active" id="cpane-python">
+      <div class="cp-howto">
+        <strong>warehouse_optimizer_v5.py</strong> — Beam Search + Local Search + OpenMP accelerated optimizer.
+        Paste your own <code>.py</code> code or edit below. Use <strong>Download</strong> to save your version.
+        Run with: <code>python3 warehouse_optimizer_v5.py warehouse.csv types_of_bays.csv output.csv [obstacles.csv] [ceiling.csv]</code>
+      </div>
+      <div class="cp-editor-area">
+        <div class="cp-toolbar">
+          <span class="cp-toolbar-label">File:</span>
+          <span style="font-family:monospace;font-size:13px;color:var(--mecalux-orange)">warehouse_optimizer_v5.py</span>
+          <div style="flex:1"></div>
+          <button class="btn" onclick="document.getElementById('fi-pycode').click()">📂 Open .py</button>
+          <input type="file" id="fi-pycode" accept=".py,.txt" style="display:none" onchange="loadCodeFile(event,'python')">
+        </div>
+        <textarea class="cp-editor" id="editor-python" spellcheck="false"></textarea>
+      </div>
+    </div>
+
+    <!-- C pane -->
+    <div class="cp-pane" id="cpane-c">
+      <div class="cp-howto">
+        <strong>warehouse_core_v3.c</strong> — C extension hot-path (compiled to <code>.so</code>).
+        Paste your C source here. Compile with: <code>gcc -O2 -fopenmp -shared -fPIC -o warehouse_core_v3.so warehouse_core_v3.c -lm</code>
+      </div>
+      <div class="cp-editor-area">
+        <div class="cp-toolbar">
+          <span class="cp-toolbar-label">File:</span>
+          <span style="font-family:monospace;font-size:13px;color:var(--accent-blue)" id="cfile-c">warehouse_core_v3.c</span>
+          <div style="flex:1"></div>
+          <button class="btn" onclick="document.getElementById('fi-ccode').click()">📂 Open .c</button>
+          <input type="file" id="fi-ccode" accept=".c,.h,.cpp,.txt" style="display:none" onchange="loadCodeFile(event,'c')">
+        </div>
+        <textarea class="cp-editor" id="editor-c" spellcheck="false" placeholder="// Paste your C extension source here...&#10;// The Python optimizer calls warehouse_core_v3.so for heavy geometry ops.&#10;&#10;#include &lt;stdio.h&gt;&#10;#include &lt;math.h&gt;&#10;#include &lt;stdlib.h&gt;&#10;// ... your code here"></textarea>
+      </div>
+    </div>
+
+    <!-- Shell pane -->
+    <div class="cp-pane" id="cpane-sh">
+      <div class="cp-howto">
+        <strong>run_optimizer.sh</strong> — Build and run script. Paste your shell script or use the starter template.
+        Run with: <code>chmod +x run_optimizer.sh && ./run_optimizer.sh</code>
+      </div>
+      <div class="cp-editor-area">
+        <div class="cp-toolbar">
+          <span class="cp-toolbar-label">File:</span>
+          <span style="font-family:monospace;font-size:13px;color:#22c55e" id="cfile-sh">run_optimizer.sh</span>
+          <div style="flex:1"></div>
+          <button class="btn" onclick="document.getElementById('fi-shcode').click()">📂 Open .sh</button>
+          <input type="file" id="fi-shcode" accept=".sh,.bash,.txt" style="display:none" onchange="loadCodeFile(event,'sh')">
+        </div>
+        <textarea class="cp-editor" id="editor-sh" spellcheck="false"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="cp-statusbar">
+    <div class="cp-status-item"><div class="cp-status-dot"></div><span id="cp-status-lines">— lines</span></div>
+    <div class="cp-status-item"><div class="cp-status-dot blue"></div><span id="cp-status-chars">— chars</span></div>
+    <div class="cp-status-item"><div class="cp-status-dot green"></div><span>UTF-8</span></div>
+    <div style="flex:1"></div>
+    <span style="color:rgba(255,255,255,0.2)">Mecalux Warehouse Optimizer · HackUPC 2026</span>
+  </div>
+</div>
+
+
+<!-- ── PYODIDE OPTIMIZER RUNNER ── -->
+<div id="runner-overlay" class="hidden">
+  <div class="runner-box">
+    <div class="runner-header">
+      <div class="runner-title">
+        <div class="dot idle" id="runner-dot"></div>
+        ▶ Warehouse Optimizer
+      </div>
+      <div class="runner-phase" id="runner-phase">Ready</div>
+    </div>
+    <div class="runner-progress"><div class="runner-progress-bar" id="runner-bar"></div></div>
+    <div class="runner-log" id="runner-log"><span class="log-info">Waiting to start...
+Click "Run Optimizer" to execute the optimizer in your browser via Pyodide (Python WASM).
+
+Note: First run downloads ~8MB Pyodide runtime. Subsequent runs are instant.
+</span></div>
+    <div class="runner-footer">
+      <div class="runner-status-txt" id="runner-status">Idle</div>
+      <div class="runner-actions">
+        <button class="btn" id="btn-runner-cancel" onclick="cancelRunner()" style="display:none">✕ Cancel</button>
+        <button class="btn" id="btn-runner-render" onclick="renderFromRunner()" style="display:none;border-color:#4ade80;color:#4ade80;">▶ Render Scene</button>
+        <button class="btn" id="btn-runner-download" onclick="downloadOutput()" style="display:none">⬇ Download output.csv</button>
+        <button class="btn" onclick="closeRunner()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
